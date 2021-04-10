@@ -41,7 +41,7 @@ class DEQFunc(Function):
     @staticmethod
     def anderson_find_root(func, z1, u, eps, *args):
         z1_est = DEQFunc.list2vec(z1)
-        cutoffs = [(elem.size(1), elem.size(2)) for elem in z1]
+        cutoffs = args[-1]
         max_iter = args[-2]
 
         def g(x):
@@ -51,18 +51,20 @@ class DEQFunc(Function):
 
         import matplotlib.pyplot as plt
 
-        # plt.semilogy(diff)
-        # plt.xlabel("Iteration")
-        # plt.ylabel("Relative residual")
-        # plt.show()
+        plt.semilogy(diff)
+        plt.xlabel("Iteration")
+        plt.ylabel("Relative residual")
+        plt.show()
 
         return DEQFunc.vec2list(z1_est.clone().detach(), cutoffs)
 
     @staticmethod
     def forward(ctx, func, z1, u, *args):
         nelem = sum([el.nelement() for el in z1])
-        eps = args[-1] * np.sqrt(nelem)
+        eps = args[-3] * np.sqrt(nelem)
         ctx.args_len = len(args)
+
+        # Run fixed-point solver outside autodiff tape to find equilibrium.
         with torch.no_grad():
             z1_est = DEQFunc.anderson_find_root(func, z1, u, eps, *args)
             return tuple(z1_est)
@@ -101,7 +103,7 @@ class DEQModule(nn.Module):
             u = ctx.u
             args = ctx.args
 
-            cutoffs = [(elem.size(1), elem.size(2)) for elem in z1]
+            cutoffs = args[-1]
             max_iter = args[-2]
 
             func = ctx.func
@@ -109,17 +111,22 @@ class DEQModule(nn.Module):
             u_temp = u.clone().detach()
             args_temp = args
 
+            # Re-engage the autodiff tape by calling root function once
+            # to compute VJP pieces we need for backward pass.
             with torch.enable_grad():
-                y = DEQFunc.g(func, z1_temp, u_temp, cutoffs, *args_temp)
+                f_temp = DEQFunc.g(func, z1_temp, u_temp, cutoffs, *args_temp)
 
             def g(x):
-                y.backward(x, retain_graph=True)  # Retain for future calls to g
+                # Calculate JVP (retain for future calls to g).
+                f_temp.backward(x, retain_graph=True)
                 res = z1_temp.grad + grad
                 z1_temp.grad.zero_()
                 return res
 
             eps = BACKWARD_EPS * np.sqrt(big_dim)
+            print(eps)
             dl_df_est = torch.zeros_like(grad)
+            # Solve linear fixed-point equation: find the "fixed-point grad".
             dl_df_est, diff = anderson(g, dl_df_est, max_iter=max_iter, tol=eps)
 
             import matplotlib.pyplot as plt
@@ -129,8 +136,9 @@ class DEQModule(nn.Module):
             plt.ylabel("Relative residual")
             plt.show()
 
-            y.backward(torch.zeros_like(dl_df_est), retain_graph=False)
+            f_temp.backward(torch.zeros_like(dl_df_est), retain_graph=False)
 
+            print(len(args))
             grad_args = [None for _ in range(len(args))]
             return (None, dl_df_est, None, *grad_args)
 
@@ -149,18 +157,23 @@ class DEQWrapper(DEQModule):
         """
         model_args = []
         solver_args = [
-            kwargs["max_iter"],
             kwargs["tol"],
+            kwargs["max_iter"],
         ]
         args = model_args + solver_args
+
+        # Add cutoffs to arguments.
+        cutoffs = [(elem.size(1), elem.size(2)) for elem in z0]
+        args.append(cutoffs)
+        # Args structure: [..., tol, max_iter, cutoffs]
 
         if u is None:
             raise ValueError("Input injection is required.")
 
         z1 = list(DEQFunc.apply(self.func, z0, u, *args))
         if self.training:
-            cutoffs = [(elem.size(1), elem.size(2)) for elem in z1]
             z1 = DEQFunc.list2vec(DEQFunc.f(self.func, z1, u, *args))
+            # What goes into Backward is flat vector.
             z1 = self.Backward.apply(self.func_copy, z1, u, *args)
             z1 = DEQFunc.vec2list(z1, cutoffs)
         return z1

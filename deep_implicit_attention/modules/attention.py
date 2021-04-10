@@ -20,12 +20,12 @@ class FixedPointAttention(nn.Module):
         dim,  # local dimension of spins
         J_init_mean=0.0,
         J_init_std=1.0,
-        J_symmetric=True,  # undirected or directed interaction graph
-        J_trainable=False,
+        J_symmetric=False,  # undirected or directed interaction graph
+        J_trainable=True,
         prior_init_std=1.0,  # can be float or list of num_spins floats
         prior_trainable=False,
         solver_max_iter=100,
-        solver_tol=1e-6,
+        solver_tol=1e-5,
     ):
         super().__init__()
 
@@ -39,7 +39,7 @@ class FixedPointAttention(nn.Module):
             J_trainable=J_trainable,
             prior_init_std=prior_init_std,  # can be float or list of num_spins floats
             prior_trainable=prior_trainable,
-        )
+        ).double()
 
         self.model_copy = copy.deepcopy(self.model)
         for param in self.model_copy.parameters():
@@ -69,4 +69,4 @@ class FixedPointAttention(nn.Module):
         updated_kwargs = {**self.solver_opts.to_dict(), **kwargs}
         updated_kwargs = {**kwargs, **updated_kwargs}
         out = self._fixed_point(z0, x, **updated_kwargs)
-        return out
+        return out[0]

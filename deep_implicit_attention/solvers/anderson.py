@@ -1,8 +1,13 @@
 import torch
 
 
-def anderson(f, x0, m=3, lam=1e-4, max_iter=50, tol=1e-5, beta=0.9):
-    """Anderson acceleration for fixed point iteration."""
+def anderson(f, x0, m=5, lam=1e-4, max_iter=50, tol=1e-5, beta=0.8):
+    """Anderson acceleration for fixed point iteration.
+    
+    :param m: memory of update (window of previous iterations)
+    :param lam: no idea
+    :param beta: mixing parameter (damping for 0 < beta < 1, "overprojection" for beta > 1)
+    """
 
     bsz, big_dim = x0.shape
     X = torch.zeros(bsz, m, big_dim, dtype=x0.dtype, device=x0.device)
