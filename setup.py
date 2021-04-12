@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="deep-implicit-attention",
@@ -10,5 +10,5 @@ setup(
     author_email="matthiascbal@gmail.com",
     url="https://github.com/mcbal/deep-implicit-attention",
     keywords=["artificial intelligence", "attention mechanism"],
-    install_requires=["torch>=1.6", "einops>=0.3"],
+    install_requires=["numpy>=1.19", "torch>=1.6"],
 )
