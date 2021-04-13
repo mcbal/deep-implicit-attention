@@ -12,8 +12,8 @@ def set_all_seeds(seed):
     torch.cuda.manual_seed_all(seed)
 
 
-def filter_kwargs(kwargs, str):
-    return {k.replace(str, ""): v for k, v in kwargs if k.startswith(str)}
+def filter_kwargs(kwargs, prefix):
+    return {k.replace(prefix, ""): v for k, v in kwargs.items() if k.startswith(prefix)}
 
 
 def make_traceless(X: torch.Tensor):

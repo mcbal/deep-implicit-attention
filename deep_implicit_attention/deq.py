@@ -65,7 +65,7 @@ class DEQFixedPoint(nn.Module):
             out = self.solver(
                 lambda z: self.fun(z, x, *args),
                 z0,
-                **filter_kwargs(kwargs, "solver_fwd"),
+                **filter_kwargs(kwargs, "solver_fwd_"),
             )
             z, _ = out["result"], out["rel_trace"]
 
@@ -81,7 +81,7 @@ class DEQFixedPoint(nn.Module):
                     lambda y: autograd.grad(fun_bwd, z_bwd, y, retain_graph=True)[0]
                     + grad,
                     torch.zeros_like(grad),
-                    **filter_kwargs(kwargs, "solver_bwd"),
+                    **filter_kwargs(kwargs, "solver_bwd_"),
                 )
                 g, _ = out["result"], out["rel_trace"]
                 return g
@@ -94,7 +94,7 @@ class DEQFixedPoint(nn.Module):
         # Get list of initial guess tensors and reshape into a batch of vectors
         z0 = self.fun.pack_state(kwargs.get("z0", self.fun.get_initial_guess(x)))
         # Find equilibrium vectors
-        self.kwargs.update(**kwargs)
-        z_star = self._fixed_point(z0, x, *args, **kwargs)
+        z_star = self._fixed_point(z0, x, *args, **self.kwargs)
         # Return (subset of) list of tensors of original input shapes
-        return [self.fun.unpack_state(z_star)[i] for i in self.output_elements]
+        out = [self.fun.unpack_state(z_star)[i] for i in self.output_elements]
+        return out[0] if len(out) == 1 else out

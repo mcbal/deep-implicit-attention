@@ -71,8 +71,8 @@ class IsingGaussianAdaTAP(_DEQModule):
         self.prior_init_std = prior_init_std
 
         self.solver = solver
-        self.solver_tol = 1e-4
-        self.solver_max_iter = 30
+        self.solver_tol = solver_tol
+        self.solver_max_iter = solver_max_iter
 
         self.lin_response_correction = lin_response_correction
 
@@ -144,4 +144,3 @@ class IsingGaussianAdaTAP(_DEQModule):
         next_spin_mean, next_spin_var = pf * (cav_mean + x), pf
 
         return self.pack_state([next_spin_mean, next_spin_var])
-
