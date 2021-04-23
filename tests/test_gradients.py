@@ -11,7 +11,7 @@ from deep_implicit_attention.solvers import anderson
 
 class TestGradients(unittest.TestCase):
     def test_fixed_point_attention(self):
-        """Run a small network with double precision, iterating to high precision."""
+        """Run a small network with double precision."""
 
         num_spins, dim = 11, 3
 
@@ -19,9 +19,7 @@ class TestGradients(unittest.TestCase):
             IsingGaussianAdaTAP(
                 num_spins=num_spins,
                 dim=dim,
-                weights_init_std=1.0 / np.sqrt(num_spins * dim),
-                solver_max_iter=20,
-                solver_tol=1e-4,
+                weight_init_std=1.0 / np.sqrt(num_spins * dim),
             ),
             anderson,
         ).double()

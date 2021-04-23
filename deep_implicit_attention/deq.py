@@ -21,7 +21,7 @@ class _DEQModule(nn.Module, metaclass=ABCMeta):
         return z
 
     def unpack_state(self, z):
-        """Transform batch of vectors into list of batched tensors according to `state_shape`."""
+        """Transform batch of vectors into list of batched tensors."""
         assert self.state_shape is not None
         bsz, z_list = z.shape[0], []
         start_idx, end_idx = 0, reduce(lambda x, y: x * y, self.state_shape[0])
@@ -67,7 +67,14 @@ class DEQFixedPoint(nn.Module):
                 z0,
                 **filter_kwargs(kwargs, "solver_fwd_"),
             )
-            z, _ = out["result"], out["rel_trace"]
+            z = out["result"]
+
+            # Possible debug statements:
+            print(out["rel_trace"][0], "->", out["rel_trace"][-1])
+            # breakpoint()
+            from .utils import log_plot
+
+            log_plot(out["rel_trace"])
 
         if self.training:
             # Re-engage autograd tape at equilibrium state
@@ -83,7 +90,7 @@ class DEQFixedPoint(nn.Module):
                     torch.zeros_like(grad),
                     **filter_kwargs(kwargs, "solver_bwd_"),
                 )
-                g, _ = out["result"], out["rel_trace"]
+                g = out["result"]
                 return g
 
             z.register_hook(backward_hook)

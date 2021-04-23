@@ -2,8 +2,12 @@ import torch
 import torch.nn as nn
 
 from .deq import _DEQModule
-from .solvers import anderson
-from .utils import make_symmetric_and_traceless, make_traceless
+from .utils import (
+    batched_eye_like,
+    make_psd,
+    make_symmetric_and_traceless,
+    make_traceless,
+)
 
 
 class PreNorm(nn.Module):
@@ -35,7 +39,7 @@ class IsingGaussianAdaTAP(_DEQModule):
     """Ising-like vector model with Gaussian prior over spins.
 
     This module is a container for the parameters defining the system:
-      - pairwise coupling matrix weights between spins
+      - pairwise coupling matrix weight between spins
       - Gaussian prior for the spins
 
     Given these parameters (couplings and priors), the adaptive TAP framework
@@ -50,97 +54,281 @@ class IsingGaussianAdaTAP(_DEQModule):
 
     def __init__(
         self,
-        num_spins,
-        dim,
-        weights_init_std=1.0,
-        weights_symmetric=True,
-        weights_training=True,
-        prior_init_std=1.0,
-        prior_training=False,
-        solver=anderson,
-        solver_tol=1e-4,
-        solver_max_iter=30,
-        lin_response_correction=True,
+        num_spins,  # number of vector spin degrees of freedom
+        dim,  # vector dimension of degrees of freedom
+        weight_init_std=1.0,  # std of random Gaussian weight initialization
+        weight_symmetric=True,  # enforce symmetric weight
+        weight_training=True,  # turn weight into parameter
+        prior_init_std=1.0,  # std(s) of single-site prior(s) ~ N(0, std)
+        prior_training=False,  # turn
+        lin_response=True,  # toggle linear response correction to mean-field
     ):
         super().__init__()
 
-        self._init_weights(
-            num_spins, init_std=weights_init_std, training=weights_training,
+        self._init_weight(
+            num_spins, init_std=weight_init_std, training=weight_training,
         )
-        self.weights_symmetric = weights_symmetric
-        self.prior_init_std = prior_init_std
+        self.weight_symmetric = weight_symmetric
+        self.prior_init_std = (
+            nn.Parameter(prior_init_std * torch.ones(num_spins, 1))
+            if prior_training
+            else prior_init_std
+        )
 
-        self.solver = solver
-        self.solver_tol = solver_tol
-        self.solver_max_iter = solver_max_iter
+        self.lin_response = lin_response
 
-        self.lin_response_correction = lin_response_correction
-
-    def _init_weights(self, num_spins, init_std, training):
+    def _init_weight(self, num_spins, init_std, training):
         """Initialize random coupling matrix."""
-        weights = init_std * torch.randn(num_spins, num_spins)
+        weight = init_std * torch.randn(num_spins, num_spins)
         if training:
-            self._weights = nn.Parameter(weights)
+            self._weight = nn.Parameter(weight)
         else:
-            self.register_buffer("_weights", weights)
+            self.register_buffer("_weight", weight)
 
     @property
-    def weights(self):
-        if self.weights_symmetric:
-            return make_symmetric_and_traceless(self._weights)
-        return make_traceless(self._weights)
+    def weight(self):
+        if self.weight_symmetric:
+            return make_symmetric_and_traceless(self._weight)
+        return make_traceless(self._weight)
 
-    def gibbs_free_energy(self, z):
-        raise NotImplementedError()
+    def gibbs_free_energy(self):
+        pass
 
     def get_initial_guess(self, x):
         return [
             torch.zeros_like(x),  # spin_mean
-            torch.ones(
+            torch.zeros(
                 (x.size(0), x.size(1), 1), device=x.device, dtype=x.dtype
-            ),  # spin_var
+            ),  # cavity_var
         ]
 
-    def _solve_cavity(self, spin_mean, spin_var):
-        if self.lin_response_correction:
-            bsz = spin_mean.size(0)
-
-            def v_fun(v):
-                big_lambda = (v.unsqueeze(-1) + 1.0 / spin_var).squeeze(-1)
-                X = torch.diag_embed(big_lambda) - self.weights[None, :, :].repeat(
-                    bsz, 1, 1
-                )
-                ones = torch.eye(X.shape[-1], device=X.device, dtype=X.dtype)[
-                    None, :, :
-                ].repeat(bsz, 1, 1)
-                out, _ = torch.solve(ones, X)
-                # Check for negative eigenvalues (instability of mean-field solution).
-                # print(torch.eig(out[0]), torch.dist(ones, X.matmul(out)))
-                new_v = big_lambda - 1.0 / torch.diagonal(out, dim1=-2, dim2=-1)
-                return new_v
-
-            result = self.solver(
-                v_fun,
-                torch.zeros_like(spin_var).squeeze(-1),
-                max_iter=self.solver_max_iter,
-                tol=self.solver_tol,
-            )
-            cav_var = result["result"].unsqueeze(-1)
-        else:
-            cav_var = torch.zeros_like(spin_var)
-
-        cav_mean = (
-            torch.einsum("n m, b m d -> b n d", self.weights, spin_mean)
-            - cav_var * spin_mean
-        )
-        return cav_mean, cav_var  # (bsz, num_spins, dim), (bsz, num_spins, 1)
+    def _spin_mean_var(self, x, cav_mean, cav_var):
+        """
+        
+        These expressions are obtained from integrating the single-site partition function,
+        where a Gaussian prior has been . Inserting a X prior for scalar degrees of freedom
+        would give a cosh(...)-expression for the single-site partition function and hence
+        a spin expectation value involving tanh(...) (see e.g.)."""
+        prefactor = 1.0 / (1.0 / self.prior_init_std ** 2 - cav_var)
+        spin_mean = prefactor * (cav_mean + x)
+        spin_var = prefactor if self.lin_response else torch.zeros_like(cav_var)
+        return spin_mean, spin_var
 
     def forward(self, z, x, *args):
-        spin_mean, spin_var = self.unpack_state(z)
+        spin_mean, cav_var = self.unpack_state(z)
 
-        cav_mean, cav_var = self._solve_cavity(spin_mean, spin_var)
+        cav_mean = (
+            torch.einsum("n m, b m d -> b n d", self.weight, spin_mean)
+            - cav_var * spin_mean
+        )
 
-        pf = self.prior_init_std ** 2 / (1 - self.prior_init_std ** 2 * cav_var)
-        next_spin_mean, next_spin_var = pf * (cav_mean + x), pf
+        next_spin_mean, next_spin_var = self._spin_mean_var(x, cav_mean, cav_var)
 
-        return self.pack_state([next_spin_mean, next_spin_var])
+        if self.lin_response:
+            # Update cav_var (shared across batch so only).
+            big_lambda = (cav_var[0] + 1.0 / next_spin_var[0]).squeeze(-1)
+            # print(big_lambda.shape)
+            X = torch.diag_embed(big_lambda) - self.weight
+            # print(X.shape)
+            ones = torch.eye(*X.shape, out=torch.empty_like(X))
+            # print(ones.shape)
+            out, _ = torch.solve(ones, X)
+            next_cav_var = big_lambda - 1.0 / torch.diagonal(out, dim1=-2, dim2=-1)
+            # print(next_cav_var)
+            # Restore batch.
+            bsz = spin_mean.size(0)
+            next_cav_var = next_cav_var[None, :, None].repeat(bsz, 1, 1)
+        else:
+            next_cav_var = cav_var
+
+        return self.pack_state([next_spin_mean, next_cav_var])
+
+
+class GeneralizedIsingGaussianAdaTAP(_DEQModule):
+    """Ising-like vector model with Gaussian prior over spins.
+
+    This module is a container for the parameters defining the system:
+      - pairwise coupling matrix weight between spins
+      - Gaussian prior for the spins
+
+    Given these parameters (couplings and priors), the adaptive TAP framework
+    provides a closed-form solution for the Gibbs free energy and sets of
+    equations that should be solved self-consistently for a fixed point.
+    The algorithm is equivalent to expectation propagation (see Section 4.3 in
+    https://arxiv.org/abs/1409.6179) and boils down to matching the first and
+    second moments assuming a Gaussian cavity distribution.
+
+    To use this module, wrap it in `modules.DEQFixedPoint`.
+    """
+
+    def __init__(
+        self,
+        num_spins,  # number of vector spin degrees of freedom
+        dim,  # vector dimension of degrees of freedom
+        weight_init_std=1.0,  # std of random Gaussian weight initialization
+        weight_symmetric=True,  # enforce symmetric weight
+        weight_training=True,  # turn weight into parameter
+        prior_init_std=1.0,  # std(s) of single-site prior(s) ~ N(0, std)
+        prior_training=False,  # turn
+        lin_response=True,  # toggle linear response correction to mean-field
+    ):
+        super().__init__()
+
+        self._init_weight(
+            num_spins, dim, init_std=weight_init_std, training=weight_training,
+        )
+        self.weight_symmetric = weight_symmetric
+        # self.prior_init_std = (
+        #     nn.Parameter(prior_init_std * torch.ones(num_spins, dim, dim))
+        #     if prior_training
+        #     else torch.ones(num_spins, dim, dim)
+        # else prior_init_std ** -2
+        # * batched_eye_like(torch.ones(num_spins, dim, dim))
+        # )
+
+        # bla = torch.rand(num_spins, dim, dim)
+        # self.prior_init_std = 0.5 * (bla + bla.transpose(1, 2))  # / 10
+
+        self.prior_init_std = batched_eye_like(torch.ones(num_spins, dim, dim))
+
+        # self.prior_init_std = torch.ones(num_spins, dim, dim)
+
+        self.lin_response = lin_response
+
+    def _init_weight(self, num_spins, dim, init_std, training):
+        """Initialize random coupling matrix."""
+        weight = init_std * torch.randn(num_spins, num_spins, dim, dim)
+        if training:
+            self._weight = nn.Parameter(weight)
+        else:
+            self.register_buffer("_weight", weight)
+
+    @property
+    def weight(self):
+        num_spins, dim = self._weight.size(0), self._weight.size(2)
+        mask = batched_eye_like(torch.zeros(dim ** 2, num_spins, num_spins))
+        mask = mask.permute([1, 2, 0]).reshape(num_spins, num_spins, dim, dim)
+        weight = (1.0 - mask) * self._weight
+        return 0.5 * (weight + weight.permute([1, 0, 2, 3]))
+
+    def get_initial_guess(self, x):
+        # cant initialize cav_var with zero or first prefactor eval is singular (all ones...)
+        # cav_var = torch.rand(
+        #     (x.size(0), x.size(1), x.size(2), x.size(2)),
+        #     device=x.device,
+        #     dtype=x.dtype,
+        # )
+        # cav_var = 0.5 * (cav_var + cav_var.transpose(2, 3))
+        cav_var = torch.zeros(
+            (x.size(0), x.size(1), x.size(2), x.size(2)),
+            device=x.device,
+            dtype=x.dtype,
+        )
+        return [torch.zeros_like(x), cav_var]  # spin_mean
+
+    def _spin_mean_var(self, x, cav_mean, cav_var):
+        """
+        
+        These expressions are obtained from integrating the single-site partition function,
+        where a Gaussian prior has been . Inserting a X prior for scalar degrees of freedom
+        would give a cosh(...)-expression for the single-site partition function and hence
+        a spin expectation value involving tanh(...) (see e.g.)."""
+        # prefactor = 1.0 / (1.0 / (self.prior_init_std ** 2) - cav_var)
+        X = self.prior_init_std - cav_var[0]  # (N, d, d)
+        ones = batched_eye_like(X)
+        prefactor, _ = torch.solve(ones, X)
+        # print(prefactor)
+        # breakpoint()
+        spin_mean = torch.einsum("n d e, b n d -> b n e", prefactor, (cav_mean + x))
+        spin_var = prefactor  # .unsqueeze(0)
+        return spin_mean, spin_var
+
+    def forward(self, z, x, *args):
+        spin_mean, cav_var = self.unpack_state(z)
+
+        cav_mean = torch.einsum(
+            "n m d e, b m d -> b n e", self.weight, spin_mean
+        ) - torch.einsum("b n d e, b n d -> b n e", cav_var, spin_mean)
+
+        # print(cav_var.min(), cav_var.mean(), cav_var.max())
+        # breakpoint()
+
+        next_spin_mean, next_spin_var = self._spin_mean_var(x, cav_mean, cav_var)
+
+        # Update cav_var (shared across batch so only).
+        if self.lin_response:
+            N, dim = spin_mean.size(-2), spin_mean.size(-1)
+
+            ones = batched_eye_like(next_spin_var)
+            next_spin_varrrr, _ = torch.solve(ones, next_spin_var)
+
+            big_lambda = cav_var[0] + next_spin_varrrr  # (N, d, d)
+            # big_lambda = batched_eye_like(cav_var[0])
+
+            # print(
+            #     "big_lambda equals prior:", torch.norm(big_lambda - self.prior_init_std)
+            # )
+            # breakpoint()
+
+            big_lambda = big_lambda.permute([1, 2, 0]).reshape(dim ** 2, -1)  # (d^2, N)
+            big_lambda = torch.ones(dim ** 2, N)
+            # print(big_lambda.shape, torch.diag_embed(big_lambda).shape)
+            # print(big_lambda)
+            # breakpoint()
+            weightz = self.weight.permute([2, 3, 0, 1]).reshape(
+                dim ** 2, N, N
+            )  # (d^2, N, N)
+            X = torch.diag_embed(big_lambda) - weightz
+
+            ones = batched_eye_like(X)
+            # print(torch.diag_embed(big_lambda))
+
+            if torch.any(torch.svd(X, compute_uv=False)[1] < torch.finfo(X.dtype).eps):
+                print("SINGULAR")
+
+            print(torch.eig(X[0]), torch.eig(X[4]))
+            # breakpoint()
+
+            out, _ = torch.solve(ones, X)
+
+            print(torch.eig(out[0]), torch.eig(out[4]))
+            # breakpoint()
+
+            # print(torch.dist(ones, X.matmul(out)))
+            # print(out)
+            chii = torch.diagonal(out, dim1=-2, dim2=-1)  # (d^2, N)
+            print("chi", chii.min(), chii.mean(), chii.max(), chii.shape)
+
+            chii = chii.permute([1, 0]).reshape(N, dim, dim)  # (N, d, d)
+
+            # u, s, vh = torch.linalg.svd(chii_big, full_matrices=False)
+            # print(u.shape, s.shape, vh.shape)
+            # print(s)
+            # chii = u[:, :, :1] @ torch.diag_embed(s[:, :1]) @ vh[:, :1, :]
+            # print(torch.dist(chii, chii_big))
+            # print(torch.eig(chii[0]))
+            # breakpoint()
+
+            # ones = batched_eye_like(chii)
+            # chii_inv, _ = torch.solve(ones, chii)
+            big_lambda = big_lambda.permute([1, 0]).reshape(N, dim, dim)
+            # next_cav_var = big_lambda - chii_inv
+
+            A = chii
+            B = chii @ big_lambda - batched_eye_like(chii)
+            next_cav_var, _ = torch.solve(B, A)
+
+            # print(chii_inv.min(), chii_inv.mean(), chii_inv.max())
+            print(next_cav_var.min(), next_cav_var.mean(), next_cav_var.max())
+            breakpoint()
+            # Restore batch.
+            bsz = spin_mean.size(0)
+            next_cav_var = next_cav_var.unsqueeze(0).repeat(bsz, 1, 1, 1)
+
+            # breakpoint()
+        else:
+            next_cav_var = cav_var  # zeros
+
+        # print(next_cav_var.shape)
+
+        return self.pack_state([next_spin_mean, next_cav_var])
