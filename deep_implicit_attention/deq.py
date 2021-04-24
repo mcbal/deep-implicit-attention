@@ -32,6 +32,11 @@ class _DEQModule(nn.Module, metaclass=ABCMeta):
                 end_idx += reduce(lambda x, y: x * y, self.state_shape[i + 1])
         return z_list
 
+    # @abstractmethod
+    # def pre_forward_hook(self):
+    #     """Return an initial guess for the fixed-point state based on shape of `x`."""
+    #     pass
+
     @abstractmethod
     def get_initial_guess(self, x):
         """Return an initial guess for the fixed-point state based on shape of `x`."""
@@ -41,6 +46,11 @@ class _DEQModule(nn.Module, metaclass=ABCMeta):
     def forward(self, z, x, *args):
         """Implement (z_{n}, x) -> z_{n+1}."""
         pass
+
+    # @abstractmethod
+    # def post_forward_hook(self):
+    #     """Return an initial guess for the fixed-point state based on shape of `x`."""
+    #     pass
 
 
 class DEQFixedPoint(nn.Module):
@@ -71,10 +81,13 @@ class DEQFixedPoint(nn.Module):
 
             # Possible debug statements:
             print(out["rel_trace"][0], "->", out["rel_trace"][-1])
+            # print(
+            #     self.fun.weight()
+            # )  # doesnt update, add pre and post forward init functions
             # breakpoint()
-            from .utils import log_plot
+            # from .utils import log_plot
 
-            log_plot(out["rel_trace"])
+            # log_plot(out["rel_trace"])
 
         if self.training:
             # Re-engage autograd tape at equilibrium state

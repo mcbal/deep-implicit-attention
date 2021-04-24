@@ -1,5 +1,9 @@
+from functools import lru_cache
+
 import torch
 import torch.nn as nn
+import numpy as np
+from einops import rearrange, repeat
 
 from .deq import _DEQModule
 from .utils import (
@@ -118,7 +122,7 @@ class IsingGaussianAdaTAP(_DEQModule):
         spin_mean, cav_var = self.unpack_state(z)
 
         cav_mean = (
-            torch.einsum("n m, b m d -> b n d", self.weight, spin_mean)
+            torch.einsum("n m, b m d -> b n d", self.weight(), spin_mean)
             - cav_var * spin_mean
         )
 
@@ -128,7 +132,7 @@ class IsingGaussianAdaTAP(_DEQModule):
             # Update cav_var (shared across batch so only).
             big_lambda = (cav_var[0] + 1.0 / next_spin_var[0]).squeeze(-1)
             # print(big_lambda.shape)
-            X = torch.diag_embed(big_lambda) - self.weight
+            X = torch.diag_embed(big_lambda) - self.weight()
             # print(X.shape)
             ones = torch.eye(*X.shape, out=torch.empty_like(X))
             # print(ones.shape)
@@ -186,10 +190,15 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
         # * batched_eye_like(torch.ones(num_spins, dim, dim))
         # )
 
-        # bla = torch.rand(num_spins, dim, dim)
-        # self.prior_init_std = 0.5 * (bla + bla.transpose(1, 2))  # / 10
+        # bla = 1.0 / (torch.randn(num_spins, dim, dim))  # / (num_spins * dim))
+        # self.prior_init_std = 0.5 * (bla + bla.transpose(1, 2))
+        # print(self.prior_init_std)
 
-        self.prior_init_std = batched_eye_like(torch.ones(num_spins, dim, dim))
+        self.prior_init_std = (
+            1.0
+            / prior_init_std ** 2
+            * batched_eye_like(torch.ones(num_spins, dim, dim))
+        )
 
         # self.prior_init_std = torch.ones(num_spins, dim, dim)
 
@@ -203,13 +212,16 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
         else:
             self.register_buffer("_weight", weight)
 
-    @property
+    # @lru_cache(maxsize=1)
     def weight(self):
+        # https://pytorch.org/tutorials/intermediate/parametrizations.html
         num_spins, dim = self._weight.size(0), self._weight.size(2)
+        weight = 0.25 * (self._weight + self._weight.permute([1, 0, 3, 2]))
+        # weight = 0.5 * (weight + weight.permute([1, 0, 2, 3]))
         mask = batched_eye_like(torch.zeros(dim ** 2, num_spins, num_spins))
         mask = mask.permute([1, 2, 0]).reshape(num_spins, num_spins, dim, dim)
-        weight = (1.0 - mask) * self._weight
-        return 0.5 * (weight + weight.permute([1, 0, 2, 3]))
+        weight = (1.0 - mask) * weight
+        return weight
 
     def get_initial_guess(self, x):
         # cant initialize cav_var with zero or first prefactor eval is singular (all ones...)
@@ -219,6 +231,11 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
         #     dtype=x.dtype,
         # )
         # cav_var = 0.5 * (cav_var + cav_var.transpose(2, 3))
+        # cav_var = (
+        #     batched_eye_like(torch.ones(x.size(1), x.size(2), x.size(2)))
+        #     .unsqueeze(0)
+        #     .repeat(x.size(0), 1, 1, 1)
+        # )
         cav_var = torch.zeros(
             (x.size(0), x.size(1), x.size(2), x.size(2)),
             device=x.device,
@@ -247,7 +264,7 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
         spin_mean, cav_var = self.unpack_state(z)
 
         cav_mean = torch.einsum(
-            "n m d e, b m d -> b n e", self.weight, spin_mean
+            "n m d e, b m d -> b n e", self.weight(), spin_mean
         ) - torch.einsum("b n d e, b n d -> b n e", cav_var, spin_mean)
 
         # print(cav_var.min(), cav_var.mean(), cav_var.max())
@@ -257,78 +274,66 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
 
         # Update cav_var (shared across batch so only).
         if self.lin_response:
-            N, dim = spin_mean.size(-2), spin_mean.size(-1)
+            N, dim = next_spin_mean.size(-2), next_spin_mean.size(-1)
 
+            J = self.weight()
+            # print(torch.norm(J - J.permute([1, 0, 3, 2])))
+            # print(J)
+            # breakpoint()
+            S = rearrange(next_spin_var, "i a b -> a b i")
+            V = cav_var[0]
+            # print(torch.kron(torch.eye(dim), torch.eye(N)))
+            A = (
+                torch.kron(torch.eye(dim), torch.eye(N))
+                - torch.einsum("a c i, i k c d -> a i d k", S, J).reshape(
+                    dim * N, dim * N
+                )
+                + torch.einsum(
+                    "a c i, i c d, i k -> a i d k", S, V, torch.eye(N)
+                ).reshape(dim * N, dim * N)
+            )
+            B = rearrange(torch.diag_embed(S), "a b i j -> (a i) (b j)")
+            covar, _ = torch.solve(B, A)
+            covar = rearrange(covar, "(a i) (b j) -> a b i j", a=dim, b=dim, i=N, j=N)
+
+            # print(torch.det(A))
+            # print(torch.linalg.cond(A))
+            # print(A)
+            # breakpoint()
+
+            # print(torch.eig(B))
+            # print(torch.eig(rearrange(covar, "a b i j -> (a i) (b j)")))
+
+            chii = torch.diagonal(covar, dim1=-2, dim2=-1)  # dim * N
+            chii = rearrange(chii, "a b i -> i a b", a=dim, i=N)
+
+            # print(chii)
+
+            # Find cav var now.
             ones = batched_eye_like(next_spin_var)
             next_spin_varrrr, _ = torch.solve(ones, next_spin_var)
-
-            big_lambda = cav_var[0] + next_spin_varrrr  # (N, d, d)
-            # big_lambda = batched_eye_like(cav_var[0])
-
-            # print(
-            #     "big_lambda equals prior:", torch.norm(big_lambda - self.prior_init_std)
-            # )
-            # breakpoint()
-
-            big_lambda = big_lambda.permute([1, 2, 0]).reshape(dim ** 2, -1)  # (d^2, N)
-            big_lambda = torch.ones(dim ** 2, N)
-            # print(big_lambda.shape, torch.diag_embed(big_lambda).shape)
-            # print(big_lambda)
-            # breakpoint()
-            weightz = self.weight.permute([2, 3, 0, 1]).reshape(
-                dim ** 2, N, N
-            )  # (d^2, N, N)
-            X = torch.diag_embed(big_lambda) - weightz
-
-            ones = batched_eye_like(X)
-            # print(torch.diag_embed(big_lambda))
-
-            if torch.any(torch.svd(X, compute_uv=False)[1] < torch.finfo(X.dtype).eps):
-                print("SINGULAR")
-
-            print(torch.eig(X[0]), torch.eig(X[4]))
-            # breakpoint()
-
-            out, _ = torch.solve(ones, X)
-
-            print(torch.eig(out[0]), torch.eig(out[4]))
-            # breakpoint()
-
-            # print(torch.dist(ones, X.matmul(out)))
-            # print(out)
-            chii = torch.diagonal(out, dim1=-2, dim2=-1)  # (d^2, N)
-            print("chi", chii.min(), chii.mean(), chii.max(), chii.shape)
-
-            chii = chii.permute([1, 0]).reshape(N, dim, dim)  # (N, d, d)
-
-            # u, s, vh = torch.linalg.svd(chii_big, full_matrices=False)
-            # print(u.shape, s.shape, vh.shape)
-            # print(s)
-            # chii = u[:, :, :1] @ torch.diag_embed(s[:, :1]) @ vh[:, :1, :]
-            # print(torch.dist(chii, chii_big))
-            # print(torch.eig(chii[0]))
-            # breakpoint()
-
-            # ones = batched_eye_like(chii)
-            # chii_inv, _ = torch.solve(ones, chii)
-            big_lambda = big_lambda.permute([1, 0]).reshape(N, dim, dim)
-            # next_cav_var = big_lambda - chii_inv
+            big_lambda = V + next_spin_varrrr  # (N, d, d)
 
             A = chii
             B = chii @ big_lambda - batched_eye_like(chii)
             next_cav_var, _ = torch.solve(B, A)
 
-            # print(chii_inv.min(), chii_inv.mean(), chii_inv.max())
-            print(next_cav_var.min(), next_cav_var.mean(), next_cav_var.max())
-            breakpoint()
+            print(torch.eig(next_spin_var[1]))
+            print(torch.eig(next_cav_var[1]))
+            # print(next_cav_var[next_cav_var < 0].numel(), next_cav_var.numel())
+            # print(next_spin_var[next_spin_var < 0].numel(), next_spin_var.numel())
+            # breakpoint()
+
             # Restore batch.
-            bsz = spin_mean.size(0)
-            next_cav_var = next_cav_var.unsqueeze(0).repeat(bsz, 1, 1, 1)
+            next_cav_var = repeat(next_cav_var, "n d e -> b n d e", b=x.size(0))
 
             # breakpoint()
         else:
             next_cav_var = cav_var  # zeros
 
-        # print(next_cav_var.shape)
+        # print(next_cav_var)
+        # print(next_spin_var)
+        # print(next_spin_mean)
+        breakpoint()
 
         return self.pack_state([next_spin_mean, next_cav_var])
