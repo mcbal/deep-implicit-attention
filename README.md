@@ -2,15 +2,30 @@
 
 ## Deep Implicit Attention
 
-_The return of the Boltzmann machine_
-
 ---
 
 Experimental implementation of deep implicit attention in PyTorch.
 
-**Key idea:** Use deep equilibrium networks to implicitly solve a set of self-consistent mean-field equations of a random Ising model: attention as a collective response 🤗.
+**Summary:** Using deep equilibrium networks to implicitly solve a set of self-consistent mean-field equations of a random Ising model implements attention as a collective response 🤗 and provides insight into the transformer architecture, connecting it to mean-field theory, message-passing algorithms, and Boltzmann machines.
 
-**Blog post (in preparation):** <a href="https://mcbal.github.io/">Deep Implicit Attention: A Mean-Field Theory Perspective on Attention Mechanisms</a>
+**Blog post: Deep Implicit Attention: A Mean-Field Theory Perspective on Attention Mechanisms (in preparation)**
+
+## To-do
+
+### Modules
+- [x] Add a `GeneralizedIsingGaussianAdaTAP` module implementing the adaptive TAP mean-field equations for an Ising-like vector model with standard multivariate Gaussian priors over spins
+- [ ] Make the parameters of the multivariate Gaussian priors in `GeneralizedIsingGaussianAdaTAP` trainable
+- [ ] Add the analytical expression of the appropriate adaptive TAP Gibbs free energy for `GeneralizedIsingGaussianAdaTAP` so it can be used as a stand-alone loss function for the system
+- [ ] Add a pedagogical `VanillaSoftmaxAttention` module which reproduces vanilla softmax attention, i.e. implementing coupling weights between spins which depend solely on linear transformations of the external sources (queries/keys) and replacing the self-correction term with a parametrized position-wise feed-forward network
+
+### Models
+- [ ] Add a `DeepImplicitAttentionTransformer` model
+- [ ] Add a `DeepImplicitAttentionViT` model
+- [ ] Add a `DeepImplicitAttentionAgent` model
+
+### Miscellaneous
+- [ ] Add additional fixed-point / root solvers (e.g. Broyden)
+- [ ] Add examples (MNIST, sequence tasks, ...)
 
 ## Setup
 
@@ -30,7 +45,9 @@ $ python -m unittest
 
 See `tests` for now until `examples` folder is populated.
 
-## Selection of references
+## References
+
+### Selection of literature
 On variational inference, iterative approximation algorithms, expectation propagation, mean-field methods and belief propagation:
 - [Expectation Propagation](https://arxiv.org/abs/1409.6179) (2014) by Jack Raymond, Andre Manoel, Manfred Opper
 
@@ -48,7 +65,7 @@ On deep equilibrium networks:
 - [Chapter 4: Deep Equilibrium Models](https://implicit-layers-tutorial.org/deep_equilibrium_models/) of the [Deep Implicit Layers - Neural ODEs, Deep Equilibirum Models, and Beyond](http://implicit-layers-tutorial.org/), created by Zico Kolter, David Duvenaud, and Matt Johnson
 
 
-## Code inspiration
+### Code inspiration
 
 - http://implicit-layers-tutorial.org/
 - https://github.com/locuslab/deq
