@@ -5,7 +5,7 @@ import torch
 from torch.autograd import gradcheck
 
 from deep_implicit_attention.deq import DEQFixedPoint
-from deep_implicit_attention.modules import IsingGaussianAdaTAP
+from deep_implicit_attention.modules import GeneralizedIsingGaussianAdaTAP
 from deep_implicit_attention.solvers import anderson
 
 
@@ -15,22 +15,29 @@ class TestGradients(unittest.TestCase):
 
         num_spins, dim = 11, 3
 
-        deq_attn = DEQFixedPoint(
-            IsingGaussianAdaTAP(
-                num_spins=num_spins,
-                dim=dim,
-                weight_init_std=1.0 / np.sqrt(num_spins * dim),
-            ),
-            anderson,
-        ).double()
+        for lin_response in [False, True]:
+            with self.subTest():
+                deq_attn = DEQFixedPoint(
+                    GeneralizedIsingGaussianAdaTAP(
+                        num_spins=num_spins,
+                        dim=dim,
+                        weight_init_std=1.0 / np.sqrt(num_spins * dim ** 2),
+                        lin_response=lin_response,
+                    ),
+                    anderson,
+                ).double()
 
-        source = torch.randn(1, num_spins, dim).double().requires_grad_()
+                source = torch.randn(1, num_spins, dim).double() / np.sqrt(dim)
 
-        self.assertTrue(
-            gradcheck(
-                deq_attn, source, eps=1e-5, atol=1e-3, check_undefined_grad=False,
-            )
-        )
+                self.assertTrue(
+                    gradcheck(
+                        deq_attn,
+                        source.requires_grad_(),
+                        eps=1e-5,
+                        atol=1e-3,
+                        check_undefined_grad=False,
+                    )
+                )
 
 
 if __name__ == "__main__":
