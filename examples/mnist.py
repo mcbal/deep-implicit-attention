@@ -34,7 +34,6 @@ from torch.optim.lr_scheduler import StepLR
 #         return output
 from deep_implicit_attention.deq import DEQFixedPoint
 from deep_implicit_attention.modules import (
-    IsingGaussianAdaTAP,
     FeedForward,
     GeneralizedIsingGaussianAdaTAP,
 )
@@ -80,15 +79,14 @@ class Net(nn.Module):
                     num_spins=num_spins,
                     dim=dim,
                     weight_init_std=1.0
-                    / np.sqrt(num_spins * dim),  # np.sqrt(num_spins * dim),
-                    prior_init_std=1.0,
+                    / np.sqrt(num_spins * dim ** 2),  # np.sqrt(num_spins * dim),
                     weight_symmetric=True,
-                    lin_response=False,
+                    lin_response=True,
                 ),
                 anderson,
-                solver_fwd_max_iter=35,
+                solver_fwd_max_iter=30,
                 solver_fwd_tol=1e-4,
-                solver_bwd_max_iter=35,
+                solver_bwd_max_iter=30,
                 solver_bwd_tol=1e-4,
             ),
             # FeedForward(dim, dim, dropout=0.1),
@@ -149,7 +147,7 @@ class Net(nn.Module):
         # comp_tokens = torch.zeros((1, comp_dim, 16)).repeat(x.size(0), 1, 1)
         x = torch.cat([cls_token, x], dim=1)
         # print(x.shape, comp_tokens.shape, cls_token.shape)
-        # x = self.norm(x)
+        # x = x / np.sqrt(x.shape[-1])
         # print(x)
         # print(x.shape)
         # print(x.shape)

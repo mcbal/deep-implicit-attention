@@ -1,6 +1,9 @@
-"""Black-box fixed-point solvers and root-finding methods.
+"""
+Black-box fixed-point solvers and root-finding methods.
 
-TODO: Clean up.
+TODO:
+    - Clean up
+    - Add additional fixed-point / root solvers (e.g. Broyden)
 """
 import torch
 
@@ -8,8 +11,11 @@ import torch
 def anderson(
     f, x0, m=5, lam=1e-4, max_iter=50, tol=1e-4, stop_mode="rel", beta=1.0, **kwargs
 ):
-    """Anderson acceleration for fixed point iteration.
+    """
+    Anderson acceleration for fixed point iteration.
 
+    Args:
+    
     :param f: function to be minimized
     :param x0: a batch of vectors for the initial guess (bsz, dim)
     :param m: memory of update (window of previous iterations)

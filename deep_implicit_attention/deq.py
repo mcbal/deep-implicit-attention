@@ -5,52 +5,46 @@ import torch
 import torch.nn as nn
 import torch.autograd as autograd
 
-from .utils import filter_kwargs
+from .utils import filter_kwargs, log_plot
 
 
 class _DEQModule(nn.Module, metaclass=ABCMeta):
     def __init__(self):
         super().__init__()
-        self.state_shape = None
+        self.shapes = None
 
     def pack_state(self, z_list):
-        """Transform list of batched tensors into batch of vectors."""
-        self.state_shape = [t.shape[1:] for t in z_list]
+        """
+        Transform list of batched tensors into batch of vectors.
+        """
+        self.shapes = [t.shape[1:] for t in z_list]
         bsz = z_list[0].shape[0]
-        z = torch.cat([elem.reshape(bsz, -1) for elem in z_list], dim=1)
+        z = torch.cat([t.reshape(bsz, -1) for t in z_list], dim=1)
         return z
 
     def unpack_state(self, z):
-        """Transform batch of vectors into list of batched tensors."""
-        assert self.state_shape is not None
+        """
+        Transform batch of vectors into list of batched tensors.
+        """
+        assert self.shapes is not None
         bsz, z_list = z.shape[0], []
-        start_idx, end_idx = 0, reduce(lambda x, y: x * y, self.state_shape[0])
-        for i in range(len(self.state_shape)):
-            z_list.append(z[:, start_idx:end_idx].view(bsz, *self.state_shape[i]))
-            if i < len(self.state_shape) - 1:
+        start_idx, end_idx = 0, reduce(lambda x, y: x * y, self.shapes[0])
+        for i in range(len(self.shapes)):
+            z_list.append(z[:, start_idx:end_idx].view(bsz, *self.shapes[i]))
+            if i < len(self.shapes) - 1:
                 start_idx = end_idx
-                end_idx += reduce(lambda x, y: x * y, self.state_shape[i + 1])
+                end_idx += reduce(lambda x, y: x * y, self.shapes[i + 1])
         return z_list
 
-    # @abstractmethod
-    # def pre_forward_hook(self):
-    #     """Return an initial guess for the fixed-point state based on shape of `x`."""
-    #     pass
-
     @abstractmethod
-    def get_initial_guess(self, x):
+    def _initial_guess(self, x):
         """Return an initial guess for the fixed-point state based on shape of `x`."""
         pass
 
     @abstractmethod
     def forward(self, z, x, *args):
-        """Implement (z_{n}, x) -> z_{n+1}."""
+        """Implement f(z_{n}, x) -> z_{n+1}."""
         pass
-
-    # @abstractmethod
-    # def post_forward_hook(self):
-    #     """Return an initial guess for the fixed-point state based on shape of `x`."""
-    #     pass
 
 
 class DEQFixedPoint(nn.Module):
@@ -70,6 +64,9 @@ class DEQFixedPoint(nn.Module):
         self.kwargs.update(**kwargs)
 
     def _fixed_point(self, z0, x, *args, **kwargs):
+        """
+        Note:
+        """
         # Compute forward pass: find equilibrium state
         with torch.no_grad():
             out = self.solver(
@@ -78,16 +75,15 @@ class DEQFixedPoint(nn.Module):
                 **filter_kwargs(kwargs, "solver_fwd_"),
             )
             z = out["result"]
-
-            # Possible debug statements:
-            print(out["rel_trace"][0], "->", out["rel_trace"][-1])
-            # print(
-            #     self.fun.weight()
-            # )  # doesnt update, add pre and post forward init functions
-            # breakpoint()
-            # from .utils import log_plot
-
-            # log_plot(out["rel_trace"])
+            print(f'{out["rel_trace"][0]} -> {out["rel_trace"][-1]}')
+            if kwargs.get("debug", False):
+                log_plot(
+                    out["rel_trace"],
+                    title=f"f(z_star, x) - z_star ≈ {out['rel_trace'][-1]}",
+                )
+                # print(
+                #     self.fun.weight()
+                # )  # doesnt update, add pre and post forward init functions
 
         if self.training:
             # Re-engage autograd tape at equilibrium state
@@ -104,6 +100,7 @@ class DEQFixedPoint(nn.Module):
                     **filter_kwargs(kwargs, "solver_bwd_"),
                 )
                 g = out["result"]
+                # [DEBUG] Insert statements here for backward pass inspection.
                 return g
 
             z.register_hook(backward_hook)
@@ -111,10 +108,12 @@ class DEQFixedPoint(nn.Module):
         return z
 
     def forward(self, x, *args, **kwargs):
+        # Merge default kwargs with incoming runtime kwargs.
+        kwargs = {**self.kwargs, **kwargs}
         # Get list of initial guess tensors and reshape into a batch of vectors
-        z0 = self.fun.pack_state(kwargs.get("z0", self.fun.get_initial_guess(x)))
+        z0 = self.fun.pack_state(self.fun._initial_guess(x))
         # Find equilibrium vectors
-        z_star = self._fixed_point(z0, x, *args, **self.kwargs)
+        z_star = self._fixed_point(z0, x, *args, **kwargs)
         # Return (subset of) list of tensors of original input shapes
         out = [self.fun.unpack_state(z_star)[i] for i in self.output_elements]
         return out[0] if len(out) == 1 else out
