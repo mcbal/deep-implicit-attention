@@ -76,8 +76,8 @@ class DEQFixedPoint(nn.Module):
             z = out['result']
             if kwargs.get('debug', False):
                 print(f"{out['rel_trace'][0]} -> {out['rel_trace'][-1]}")
-                # from .utils import log_plot
-                # log_plot(out['rel_trace'])
+                from .utils import log_plot
+                log_plot(out['rel_trace'])
 
         if self.training:
             # Re-engage autograd tape at equilibrium state

@@ -181,10 +181,8 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             # [DEBUG] check conditioning of system
             # print(torch.linalg.cond(A))
 
-            spin_cov_diag = torch.diagonal(
-                spin_cov, dim1=-2, dim2=-1)  # dim * N
-            spin_cov_diag = rearrange(
-                spin_cov_diag, 'a b i -> i a b', a=dim, i=N)
+            spin_cov_diag = torch.diagonal(spin_cov, dim1=-2, dim2=-1)
+            spin_cov_diag = rearrange(spin_cov_diag, 'a b i -> i a b')
 
             # Solve implicit consistency condition for cav_inv_var.
             ones = batched_eye_like(spin_var)
