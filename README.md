@@ -13,7 +13,7 @@ Experimental implementation of deep implicit attention in PyTorch.
 ### Modules
 - [x] Add a `GeneralizedIsingGaussianAdaTAP` module implementing the adaptive TAP mean-field equations for an Ising-like vector model with standard multivariate Gaussian priors over spins
 - [ ] Make the parameters of the multivariate Gaussian priors in `GeneralizedIsingGaussianAdaTAP` trainable
-- [ ] Add a pedagogical `VanillaSoftmaxAttention` module which reproduces vanilla softmax attention, i.e. implementing coupling weights between spins which depend solely on linear transformations of the external sources (queries/keys) and replacing the self-correction term with a parametrized position-wise feed-forward network
+- [ ] Add a `VanillaSoftmaxAttention` module which reproduces vanilla softmax attention, i.e. implementing coupling weights between spins which depend solely on linear transformations of the external sources (queries/keys) and replacing the self-correction term with a parametrized position-wise feed-forward network
 
 ### Models
 - [ ] Add a `DeepImplicitAttentionTransformer` model
