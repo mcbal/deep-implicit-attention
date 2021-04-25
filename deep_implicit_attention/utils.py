@@ -15,8 +15,8 @@ def set_all_seeds(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
-def filter_kwargs(kwargs, query):
-    return {k.replace(query, ""): v for k, v in kwargs.items() if k.startswith(query)}
+def filter_kwargs(kwargs, prefix):
+    return {k.replace(prefix, ''): v for k, v in kwargs.items() if k.startswith(prefix)}
 
 
 ##############################################################################
@@ -35,9 +35,10 @@ def batched_eye_like(X: torch.Tensor):
 ##############################################################################
 
 
-def log_plot(y, title="", xlabel="Iteration", ylabel="Relative residual"):
+def log_plot(y, xlabel='Iteration', ylabel='Relative residual', title=None):
     plt.semilogy(y)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    plt.title(title)
+    plt.title(
+        title if title is not None else f'f(z_star, x) - z_star ≈ {y[-1]}')
     plt.show()
