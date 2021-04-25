@@ -2,28 +2,37 @@
 Black-box fixed-point solvers and root-finding methods.
 
 TODO:
-    - Clean up
     - Add additional fixed-point / root solvers (e.g. Broyden)
 """
 import torch
 
 
 def anderson(
-    f, x0, m=5, lam=1e-4, max_iter=50, tol=1e-4, stop_mode="rel", beta=1.0, **kwargs
+    f, x0, m=5, max_iter=50, tol=1e-4, stop_mode="rel", lam=1e-4, beta=1.0, **kwargs
 ):
     """
     Anderson acceleration for fixed point iteration.
 
     Args:
-    
-    :param f: function to be minimized
-    :param x0: a batch of vectors for the initial guess (bsz, dim)
-    :param m: memory of update (window of previous iterations)
-    :param max_iter: maximum number of iterations (cut-off)
-    :param tol: tolerance for solution accuracy
-    :param stop_mode: relative or absoltue tolerances
-    :param lam: initial guess for diagonal part of low-rank approx of (inverse) Jacobian?
-    :param beta: mixing parameter (damping for 0 < beta < 1, overprojection for beta > 1)
+        f (`Callable` or `nn.Module`):
+            Function to be minimized.
+        x0 (`torch.Tensor`):
+            A batch of vectors for the initial guess.
+        m (`int`):
+            Memory of update (window of previous iterations).
+        max_iter (`int`):
+            Maximum number of iterations (cut-off).
+        tol (`float`):
+            Tolerance for solution accuracy.
+        stop_mode (`str): 
+            Use relative ("rel) or absolute ("abs") tolerances (default: "rel").
+        lam (`float`):
+            Initial guess for diagonal part of low-rank approx of (inverse) Jacobian?
+        beta (`float`):
+            Mixing parameter (damping for 0 < `beta` < 1, overprojection for `beta` > 1).
+
+    Returns:
+            `dict` containing batch of solution vectors and other diagnostics
     """
     bsz, dim = x0.shape
     alternative_mode = "rel" if stop_mode == "abs" else "abs"
@@ -44,11 +53,12 @@ def anderson(
     for k in range(2, max_iter):
         n = min(k, m)
         G = F[:, :n] - X[:, :n]
-        H[:, 1 : n + 1, 1 : n + 1] = (
+        H[:, 1: n + 1, 1: n + 1] = (
             torch.bmm(G, G.transpose(1, 2))
             + lam * torch.eye(n, dtype=x0.dtype, device=x0.device)[None]
         )
-        alpha = torch.solve(y[:, : n + 1], H[:, : n + 1, : n + 1])[0][:, 1 : n + 1, 0]
+        alpha = torch.solve(y[:, : n + 1], H[:, : n + 1,
+                            : n + 1])[0][:, 1: n + 1, 0]
 
         X[:, k % m] = (
             beta * (alpha[:, None] @ F[:, :n])[:, 0]
@@ -75,7 +85,8 @@ def anderson(
         if trace_dict[stop_mode][-1] < tol:
             for _ in range(max_iter - 1 - k):
                 trace_dict[stop_mode].append(lowest_dict[stop_mode])
-                trace_dict[alternative_mode].append(lowest_dict[alternative_mode])
+                trace_dict[alternative_mode].append(
+                    lowest_dict[alternative_mode])
             break
 
     out = {
