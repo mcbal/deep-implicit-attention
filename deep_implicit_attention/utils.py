@@ -1,11 +1,14 @@
 import random
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    pass
 import numpy as np
 import torch
 
 
-def set_all_seeds(seed):
+def set_all_seeds(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -13,28 +16,29 @@ def set_all_seeds(seed):
 
 
 def filter_kwargs(kwargs, prefix):
-    return {k.replace(prefix, ""): v for k, v in kwargs.items() if k.startswith(prefix)}
+    return {k.replace(prefix, ''): v for k, v in kwargs.items() if k.startswith(prefix)}
 
 
-def make_traceless(X: torch.Tensor):
-    """Put zeros on the diagonal of a square."""
-    mask = torch.diag(torch.ones(X.size(0), dtype=X.dtype, device=X.device))
-    return (1.0 - mask) * X
+##############################################################################
+# TENSORS
+##############################################################################
 
 
-def make_symmetric(X: torch.Tensor):
-    """Symmetrize a square matrix."""
-    return 0.5 * (X + X.t())
+def batched_eye_like(X: torch.Tensor):
+    return torch.eye(*X.shape[1:], out=torch.empty_like(X))[None, :, :].repeat(
+        X.shape[0], 1, 1
+    )
 
 
-def make_symmetric_and_traceless(X: torch.Tensor):
-    """Symmetrize a square matrix and put its diagonal to zero."""
-    assert X.dim() == 2 and X.size(0) == X.size(1)
-    return make_traceless(make_symmetric(X))
+##############################################################################
+# PLOTTING
+##############################################################################
 
 
-def log_plot(y, xlabel="Iteration", ylabel="Relative residual"):
+def log_plot(y, xlabel='Iteration', ylabel='Relative residual', title=None):
     plt.semilogy(y)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    plt.title(
+        title if title is not None else f'f(z_star, x) - z_star ≈ {y[-1]}')
     plt.show()
