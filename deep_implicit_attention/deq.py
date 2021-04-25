@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.autograd as autograd
 
-from .utils import filter_kwargs, log_plot
+from .utils import filter_kwargs
 
 
 class _DEQModule(nn.Module, metaclass=ABCMeta):
@@ -49,10 +49,10 @@ class _DEQModule(nn.Module, metaclass=ABCMeta):
 
 class DEQFixedPoint(nn.Module):
     _default_kwargs = {
-        "solver_fwd_max_iter": 30,
-        "solver_fwd_tol": 1e-4,
-        "solver_bwd_max_iter": 30,
-        "solver_bwd_tol": 1e-4,
+        'solver_fwd_max_iter': 30,
+        'solver_fwd_tol': 1e-4,
+        'solver_bwd_max_iter': 30,
+        'solver_bwd_tol': 1e-4,
     }
 
     def __init__(self, fun, solver, output_elements=[0], **kwargs):
@@ -64,26 +64,19 @@ class DEQFixedPoint(nn.Module):
         self.kwargs.update(**kwargs)
 
     def _fixed_point(self, z0, x, *args, **kwargs):
-        """
-        Note:
-        """
+        """Find fixed-point of `fun` given `z0` and `x`."""
+
         # Compute forward pass: find equilibrium state
         with torch.no_grad():
             out = self.solver(
                 lambda z: self.fun(z, x, *args),
                 z0,
-                **filter_kwargs(kwargs, "solver_fwd_"),
+                **filter_kwargs(kwargs, 'solver_fwd_'),
             )
-            z = out["result"]
-            print(f'{out["rel_trace"][0]} -> {out["rel_trace"][-1]}')
-            if kwargs.get("debug", False):
-                log_plot(
-                    out["rel_trace"],
-                    title=f"f(z_star, x) - z_star ≈ {out['rel_trace'][-1]}",
-                )
-                # print(
-                #     self.fun.weight()
-                # )  # doesnt update, add pre and post forward init functions
+            z = out['result']
+            if kwargs.get('debug', False):
+                print(f"{out['rel_trace'][0]} -> {out['rel_trace'][-1]}")
+                # from .utils import filter_kwargs, log_plot; log_plot(out['rel_trace'])
 
         if self.training:
             # Re-engage autograd tape at equilibrium state
@@ -94,13 +87,14 @@ class DEQFixedPoint(nn.Module):
 
             def backward_hook(grad):
                 out = self.solver(
-                    lambda y: autograd.grad(fun_bwd, z_bwd, y, retain_graph=True)[0]
+                    lambda y: autograd.grad(
+                        fun_bwd, z_bwd, y, retain_graph=True)[0]
                     + grad,
                     torch.zeros_like(grad),
-                    **filter_kwargs(kwargs, "solver_bwd_"),
+                    **filter_kwargs(kwargs, 'solver_bwd_'),
                 )
-                g = out["result"]
-                # [DEBUG] Insert statements here for backward pass inspection.
+                g = out['result']
+                # [DEBUG] insert statements here for backward pass inspection
                 return g
 
             z.register_hook(backward_hook)
