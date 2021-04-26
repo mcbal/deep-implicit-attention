@@ -114,7 +114,7 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
                         device=x.device, dtype=x.dtype),  # (bsz, N, d, d)
         ]
 
-    def _spin_mean_var(self, x, cav_mean, cav_inv_var):
+    def _spin_mean_var(self, x, cav_mean, cav_var):
         """
         Compute spin means and variances from cavity means and inverse covariances matrices.
 
@@ -123,7 +123,7 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             with a multivariate Gaussian prior. You should change this function is you want to
             play around with different single-site priors for the spins.
         """
-        inv_var = self.spin_prior_inv_var - cav_inv_var  # (N, d, d)
+        inv_var = self.spin_prior_inv_var - cav_var  # (N, d, d)
         ones = batched_eye_like(inv_var)
         prefactor = torch.solve(ones, inv_var).solution
         spin_mean = torch.einsum(
@@ -147,13 +147,13 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             `torch.Tensor` containing the updated fixed-point state as a batch of big vectors
 
         """
-        spin_mean, cav_inv_var = self.unpack_state(z)
+        spin_mean, cav_var = self.unpack_state(z)
 
         cav_mean = torch.einsum(
             'n m d e, b m d -> b n e', self.weight(), spin_mean
-        ) - torch.einsum('b n d e, b n d -> b n e', cav_inv_var, spin_mean)
+        ) - torch.einsum('b n d e, b n d -> b n e', cav_var, spin_mean)
 
-        spin_mean, spin_var = self._spin_mean_var(x, cav_mean, cav_inv_var[0])
+        spin_mean, spin_var = self._spin_mean_var(x, cav_mean, cav_var[0])
 
         if self.lin_response:
             N, dim = spin_mean.size(-2), spin_mean.size(-1)
@@ -161,7 +161,7 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             J = self.weight()
             S = rearrange(spin_var, 'i a b -> a b i')
             # Get rid of batch: all elements in batch are equal (system property)
-            V = cav_inv_var[0]
+            V = cav_var[0]
 
             A = (
                 torch.kron(torch.eye(dim), torch.eye(N))
@@ -184,23 +184,23 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             spin_cov_diag = torch.diagonal(spin_cov, dim1=-2, dim2=-1)
             spin_cov_diag = rearrange(spin_cov_diag, 'a b i -> i a b')
 
-            # Solve implicit consistency condition for cav_inv_var.
+            # Solve implicit consistency condition for cav_var.
             ones = batched_eye_like(spin_var)
             spin_inv_var = torch.solve(ones, spin_var).solution
             big_lambda = V + spin_inv_var
 
             A = spin_cov_diag
             B = spin_cov_diag @ big_lambda - batched_eye_like(spin_cov_diag)
-            cav_inv_var = torch.solve(B, A).solution
+            cav_var = torch.solve(B, A).solution
 
             # [DEBUG] eigvals should be positive (cov matrices should be psd)
             # print(torch.eig(spin_var[0]))  # check for spin 0
-            # print(torch.eig(cav_inv_var[0]))  # check for spin 0
+            # print(torch.eig(cav_var[0]))  # check for spin 0
 
-            cav_inv_var = cav_inv_var.unsqueeze(
+            cav_var = cav_var.unsqueeze(
                 0).expand(x.shape[0], -1, -1, -1)
 
-        return self.pack_state([spin_mean, cav_inv_var])
+        return self.pack_state([spin_mean, cav_var])
 
 
 class PreNorm(nn.Module):
