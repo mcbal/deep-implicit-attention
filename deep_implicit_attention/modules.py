@@ -70,8 +70,11 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             training=weight_training,
         )
         # Initialize simple diagonal prior in internal dofs space.
-        self.spin_prior_inv_var = batched_eye_like(
-            torch.zeros(num_spins, dim, dim))
+        self.register_buffer(
+            'spin_prior_inv_var',
+            batched_eye_like(
+                torch.zeros(num_spins, dim, dim))
+        )
 
     def _init_weight(self, num_spins, dim, init_std, training):
         """Initialize random coupling matrix."""
