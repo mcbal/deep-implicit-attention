@@ -26,7 +26,7 @@ def filter_kwargs(kwargs, prefix):
 
 def batched_eye(bsz: int, dim: int, device, dtype):
     return torch.eye(dim, device=device, dtype=dtype)[None, :, :].repeat(
-        X.shape[0], 1, 1
+        bsz, 1, 1
     )
 
 
