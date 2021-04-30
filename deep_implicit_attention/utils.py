@@ -24,6 +24,12 @@ def filter_kwargs(kwargs, prefix):
 ##############################################################################
 
 
+def batched_eye(bsz: int, dim: int, device, dtype):
+    return torch.eye((dim, dim), device=device, dtype=dtype)[None, :, :].repeat(
+        X.shape[0], 1, 1
+    )
+
+
 def batched_eye_like(X: torch.Tensor):
     return torch.eye(*X.shape[1:], out=torch.empty_like(X))[None, :, :].repeat(
         X.shape[0], 1, 1

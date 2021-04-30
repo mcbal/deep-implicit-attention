@@ -4,7 +4,7 @@ import numpy as np
 from einops import rearrange
 
 from .deq import _DEQModule
-from .utils import batched_eye_like
+from .utils import batched_eye, batched_eye_like
 
 
 class GeneralizedIsingGaussianAdaTAP(_DEQModule):
@@ -98,7 +98,8 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             weight = 0.5 * (weight + weight.permute([0, 1, 3, 2]))
         if symmetrize_sites:  # between sites
             weight = 0.5 * (weight + weight.permute([1, 0, 2, 3]))
-        mask = batched_eye_like(torch.zeros(dim ** 2, num_spins, num_spins))
+        mask = batched_eye(dim ** 2, num_spins,
+                           device=weight.device, dtype=weight.dtype)
         mask = rearrange(mask, '(a b) i j -> i j a b', a=dim, b=dim)
         weight = (1.0 - mask) * weight  # zeros on sites' block-diagonal
         return weight
