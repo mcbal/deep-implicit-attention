@@ -173,12 +173,14 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             V = cav_var[0]
 
             A = (
-                torch.kron(torch.eye(dim), torch.eye(N))
+                torch.kron(torch.eye(dim, dtype=x.dtype, device=x.device),
+                           torch.eye(N, dtype=x.dtype, device=x.device))
                 - torch.einsum('a c i, i k c d -> a i d k', S, J).reshape(
                     dim * N, dim * N
                 )
                 + torch.einsum(
-                    'a c i, i c d, i k -> a i d k', S, V, torch.eye(N)
+                    'a c i, i c d, i k -> a i d k', S, V, torch.eye(
+                        N, dtype=x.dtype, device=x.device)
                 ).reshape(dim * N, dim * N)
             )
             B = rearrange(torch.diag_embed(S), 'a b i j -> (a i) (b j)')
