@@ -17,20 +17,20 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
         S_i ~ sum_ij J_ij S_j - V_i S_i + x_i
 
     where the V_i are self-corrections obtained self-consistently and `x_i`
-    denote the input injection or magnetic fields applied at site `i`. The linear
-    response correction step involves solving a system of equations, leading to
-    a complexity ~ O(N^3*d^3). Position-wise feed-forward networks in transformers
-    can be thought of as a neural network approximation of this expensive step.
-    Mean-field results are obtained by setting V_i = 0.
+    denote the input injection or magnetic fields applied at site `i`. The
+    linear response correction step involves solving a system of equations,
+    leading to a complexity ~ O(N^3*d^3). Mean-field results are obtained
+    by setting V_i = 0.
 
     Given the couplings between spins and a prior distribution for the single-
     spin partition function, the adaptive TAP framework provides a closed-form
-    solution in terms of sets of equations that should be solved self-consistently
-    for a fixed point. The algorithm is related to expectation propagation
-    (see Section 4.3 in https://arxiv.org/abs/1409.6179) and boils down to
-    matching the first and second moments assuming a Gaussian cavity distribution.
+    solution in terms of sets of equations that should be solved for a fixed
+    point. The algorithm is related to expectation propagation (see Section
+    4.3 in https://arxiv.org/abs/1409.6179) and boils down to matching the
+    first and second moments assuming a Gaussian cavity distribution.
 
-    To use this module, wrap it in `modules.DEQFixedPoint`.
+    Note:
+        To use this module, wrap it in `modules.DEQFixedPoint`.
 
     Args:
         num_spins (int):
@@ -39,7 +39,8 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             Internal vector space dimension of the spin degrees of freedom.
         weight_init_std (Optional[float]):
             Standard deviation of random Gaussian weight initialization.
-            Defaults to 1.0 / np.sqrt(num_spins * dim ** 2) to ensure |weight| ~ O(1).
+            Defaults to 1.0 / np.sqrt(num_spins * dim ** 2) to ensure that
+            norm of tensor |weight| ~ O(1).
         weight_training (bool):
             Allow coupling weights to be trained. (default: `True`).
         lin_response (bool):
@@ -56,6 +57,8 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
     ):
         super().__init__()
 
+        self.lin_response = lin_response
+        # Initialize weight tensor.
         self._init_weight(
             num_spins,
             dim,
@@ -66,75 +69,76 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             ),
             training=weight_training,
         )
-        self.lin_response = lin_response
+        # Initialize simple diagonal prior in internal dofs space.
         self.spin_prior_inv_var = batched_eye_like(
             torch.zeros(num_spins, dim, dim))
 
     def _init_weight(self, num_spins, dim, init_std, training):
         """Initialize random coupling matrix."""
-        weight = init_std * torch.randn(num_spins, num_spins, dim, dim)
+        weight = torch.zeros(num_spins, num_spins, dim,
+                             dim).normal_(0, init_std)
         if training:
             self._weight = nn.Parameter(weight)
         else:
             self.register_buffer('_weight', weight)
 
-    def weight(self):
+    def weight(self, symmetrize_internal=True, symmetrize_sites=True):
         """
         Return symmetrized and traceless weight tensor.
 
         Note:
-            This implementation is very inefficient since it recomputes the
-            weight tensor every time the function is called during the forward
-            pass. Since the couplings stay fixed during a fixed-point iteration,
-            the weight tensor should only be computed once and then retrieved
-            from a cache.
-
-            As soon as `torch v1.9` is released, this weight should be implemented
-            using the new `torch.nn.utils.parametrize` functions, as shown in
-            https://pytorch.org/tutorials/intermediate/parametrizations.html.
-            The forward pass should take place in the `with parametrize.cached():`
-            context manager to cache the weight calculation when first called.
+            This implementation is very inefficient since it stores N^2*d^2
+            parameters but only needs N*(N-1)*d*(d+1)/4. Also look into new
+            torch parametrization functionality once next stable version:
+            https://pytorch.org/tutorials/intermediate/parametrizations.html
         """
         num_spins, dim = self._weight.size(0), self._weight.size(2)
-        # Symmetrize internal dimension.
-        weight = 0.5 * (self._weight + self._weight.permute([0, 1, 3, 2]))
-        # Symmetrize sites.
-        weight = 0.5 * (weight + weight.permute([1, 0, 2, 3]))
-        # Make site-site coupling traceless.
+        weight = self._weight
+        if symmetrize_internal:  # local dofs at every site
+            weight = 0.5 * (weight + weight.permute([0, 1, 3, 2]))
+        if symmetrize_sites:  # between sites
+            weight = 0.5 * (weight + weight.permute([1, 0, 2, 3]))
         mask = batched_eye_like(torch.zeros(dim ** 2, num_spins, num_spins))
         mask = rearrange(mask, '(a b) i j -> i j a b', a=dim, b=dim)
-        weight = (1.0 - mask) * weight
+        weight = (1.0 - mask) * weight  # zeros on sites' block-diagonal
         return weight
 
     def _initial_guess(self, x):
         """Return initial guess tensors."""
+        bsz, N, d = x.shape
         return [
-            torch.zeros_like(x),  # (bsz, N, d)
-            torch.zeros((*x.shape, x.shape[-1]),
-                        device=x.device, dtype=x.dtype),  # (bsz, N, d, d)
+            torch.zeros((bsz, N, d),
+                        device=x.device, dtype=x.dtype),
+            torch.zeros((bsz, N, d, d),
+                        device=x.device, dtype=x.dtype),
         ]
 
     def _spin_mean_var(self, x, cav_mean, cav_var):
         """
-        Compute spin means and variances from cavity means and inverse covariances matrices.
+        Compute spin means and variances from cavity means and variances.
 
         Note:
-            These expressions are obtained from integrating the single-site partition function,
-            with a multivariate Gaussian prior. You should change this function is you want to
-            play around with different single-site priors for the spins.
+            These expressions are obtained from integrating the single-site
+            partition function with a multivariate Gaussian prior. You should
+            change this function is you want to play around with different
+            single-site priors for the spins.
         """
-        inv_var = self.spin_prior_inv_var - cav_var  # (N, d, d)
-        ones = batched_eye_like(inv_var)
-        prefactor = torch.solve(ones, inv_var).solution
+        inv_var = self.spin_prior_inv_var - cav_var
+        prefactor = torch.solve(batched_eye_like(inv_var), inv_var).solution
         spin_mean = torch.einsum(
             'n d e, b n d -> b n e', prefactor, (cav_mean + x)
-        )  # (bsz, N, d)
-        spin_var = prefactor  # (N, d, d)
+        )
+        spin_var = prefactor
         return spin_mean, spin_var
 
     def forward(self, z, x, *args):
         """
         Implement adaptive TAP fixed-point iteration step.
+
+        Note:
+            The linear response actually does too much work for this module's
+            default choice of spin priors. In particular, the intermediate
+            `big_lambda` is always a batch of identity matrices.
 
         Args:
             z (`torch.Tensor`):
@@ -144,13 +148,15 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
                 of `spin_mean` in `z` (see `_initial_guess`).
 
         Returns:
-            `torch.Tensor` containing the updated fixed-point state as a batch of big vectors
+            `torch.Tensor` with updated fixed-point state as batch of vectors
 
         """
         spin_mean, cav_var = self.unpack_state(z)
 
+        weight = self.weight()
+
         cav_mean = torch.einsum(
-            'n m d e, b m d -> b n e', self.weight(), spin_mean
+            'n m d e, b m d -> b n e', weight, spin_mean
         ) - torch.einsum('b n d e, b n d -> b n e', cav_var, spin_mean)
 
         spin_mean, spin_var = self._spin_mean_var(x, cav_mean, cav_var[0])
@@ -158,9 +164,8 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
         if self.lin_response:
             N, dim = spin_mean.size(-2), spin_mean.size(-1)
 
-            J = self.weight()
+            J = weight
             S = rearrange(spin_var, 'i a b -> a b i')
-            # Get rid of batch: all elements in batch are equal (system property)
             V = cav_var[0]
 
             A = (
@@ -184,11 +189,9 @@ class GeneralizedIsingGaussianAdaTAP(_DEQModule):
             spin_cov_diag = torch.diagonal(spin_cov, dim1=-2, dim2=-1)
             spin_cov_diag = rearrange(spin_cov_diag, 'a b i -> i a b')
 
-            # Solve implicit consistency condition for cav_var.
             ones = batched_eye_like(spin_var)
             spin_inv_var = torch.solve(ones, spin_var).solution
             big_lambda = V + spin_inv_var
-
             A = spin_cov_diag
             B = spin_cov_diag @ big_lambda - batched_eye_like(spin_cov_diag)
             cav_var = torch.solve(B, A).solution
@@ -211,6 +214,15 @@ class PreNorm(nn.Module):
 
     def forward(self, x, **kwargs):
         return self.fn(self.norm(x), **kwargs)
+
+
+class SkipConnection(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+
+    def forward(self, x, **kwargs):
+        return x + self.fn(x, **kwargs)
 
 
 class FeedForward(nn.Module):

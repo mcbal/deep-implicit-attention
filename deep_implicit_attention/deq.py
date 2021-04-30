@@ -38,7 +38,7 @@ class _DEQModule(nn.Module, metaclass=ABCMeta):
 
     @abstractmethod
     def _initial_guess(self, x):
-        """Return an initial guess for the fixed-point state based on shape of `x`."""
+        """Return an initial guess for the fixed-point state."""
         pass
 
     @abstractmethod

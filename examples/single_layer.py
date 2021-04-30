@@ -1,5 +1,3 @@
-import argparse
-
 import numpy as np
 import torch
 
@@ -8,7 +6,7 @@ from deep_implicit_attention.modules import GeneralizedIsingGaussianAdaTAP
 from deep_implicit_attention.solvers import anderson
 
 
-num_spins, dim, batch_size = 23, 7, 4
+batch_size, num_spins, dim = 4, 23, 7
 
 # Initialize fixed-point wrapper around model system.
 deq_attn = DEQFixedPoint(
