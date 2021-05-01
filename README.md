@@ -6,7 +6,7 @@ Experimental implementation of deep implicit attention in PyTorch.
 
 **Summary:** Using deep equilibrium networks to implicitly solve a set of self-consistent mean-field equations of a random Ising model implements attention as a collective response 🤗 and provides insight into the transformer architecture, connecting it to mean-field theory, message-passing algorithms, and Boltzmann machines.
 
-**Blog post (in preparation): [Deep Implicit Attention: A Mean-Field Theory Perspective on Attention Mechanisms](https://mcbal.github.io//post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/)**
+**Blog post: [Deep Implicit Attention: A Mean-Field Theory Perspective on Attention Mechanisms](https://mcbal.github.io/post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/)**
 
 ## Setup
 
