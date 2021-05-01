@@ -121,12 +121,12 @@ class DeepImplicitAttention(_DEQModule):
             'i j c d, b j d -> b i c', self.weight(), spin_mean) + x
 
         if self.lin_response:
-            spin_mean -= self.correction(spin_mean)
+            spin_mean = spin_mean - self.correction(spin_mean)
 
         return self.pack_state([spin_mean])
 
 
-class ExplicitDeepImplicitAttenion(_DEQModule):
+class ExplicitDeepImplicitAttention(_DEQModule):
     """Ising-like vector model with multivariate Gaussian prior over spins.
 
     Generalization of the application of the adaptive TAP mean-field approach
