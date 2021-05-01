@@ -6,23 +6,7 @@ Experimental implementation of deep implicit attention in PyTorch.
 
 **Summary:** Using deep equilibrium networks to implicitly solve a set of self-consistent mean-field equations of a random Ising model implements attention as a collective response 🤗 and provides insight into the transformer architecture, connecting it to mean-field theory, message-passing algorithms, and Boltzmann machines.
 
-**Blog post (in preparation): _Deep Implicit Attention: A Mean-Field Theory Perspective on Attention Mechanisms_**
-
-## To-do
-
-### Modules
-- [x] Add a `GeneralizedIsingGaussianAdaTAP` module implementing the adaptive TAP mean-field equations for an Ising-like vector model with standard multivariate Gaussian priors over spins
-- [ ] Figure out the analytical Gibbs free energy for `GeneralizedIsingGaussianAdaTAP` and implement it to be able to use it as a stand-alone loss function
-- [ ] Look into making the parameters of the multivariate Gaussian priors in `GeneralizedIsingGaussianAdaTAP` trainable
-- [ ] Add a `VanillaSoftmaxAttention` module which reproduces vanilla softmax attention, i.e. implementing coupling weights between spins which depend solely on linear transformations of the external sources (queries/keys) and replacing the self-correction term with a parametrized position-wise feed-forward network
-
-### Models
-- [ ] Add a `DeepImplicitAttentionTransformer` model
-- [ ] Add a `DeepImplicitAttentionViT` model
-
-### Miscellaneous
-- [ ] Add additional fixed-point / root solvers (e.g. Broyden)
-- [ ] Add examples (MNIST, sequence tasks, ...)
+**Blog post (in preparation): [Deep Implicit Attention: A Mean-Field Theory Perspective on Attention Mechanisms](https://mcbal.github.io//post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/)**
 
 ## Setup
 
