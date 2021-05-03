@@ -22,10 +22,6 @@ Run tests with:
 $ python -m unittest
 ```
 
-## Examples
-
-See `tests` for now until `examples` folder is populated.
-
 ## References
 
 ### Selection of literature
