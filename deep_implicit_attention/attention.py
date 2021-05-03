@@ -8,7 +8,7 @@ from .modules import FeedForward
 from .utils import batched_eye, batched_eye_like
 
 
-class DeepImplicitAttention(_DEQModule):
+class DEQMeanFieldAttention(_DEQModule):
     """Deep implicit attention.
 
     Attention as a fixed-point mean-field response of an Ising-like vector
@@ -36,6 +36,10 @@ class DeepImplicitAttention(_DEQModule):
             norm of tensor |weight| ~ O(1).
         weight_training (bool):
             Allow coupling weights to be trained. (default: `True`).
+        weight_sym_internal (bool):
+            Symmetrize internal indices of weight tensor. (default: `False`).
+        weight_sym_sites (bool):
+            Symmetrize site indices of weight tensor. (default: `False`).
         lin_response (bool):
             Toggle linear response correction to mean-field (default: `True`).
     """
@@ -46,6 +50,8 @@ class DeepImplicitAttention(_DEQModule):
         dim,
         weight_init_std=None,
         weight_training=True,
+        weight_sym_internal=False,
+        weight_sym_sites=False,
         lin_response=True,
     ):
         super().__init__()
@@ -60,6 +66,9 @@ class DeepImplicitAttention(_DEQModule):
             ),
             training=weight_training,
         )
+        self.weight_sym_internal = weight_sym_internal
+        self.weight_sym_sites = weight_sym_sites
+
         if lin_response:
             self.correction = FeedForward(dim)  # no dropout
         self.lin_response = lin_response
@@ -73,27 +82,27 @@ class DeepImplicitAttention(_DEQModule):
         else:
             self.register_buffer('_weight', weight)
 
-    def weight(self, symmetrize_internal=True, symmetrize_sites=True):
-        """
-        Return symmetrized and traceless weight tensor.
-
-        Note:
-            This implementation is very inefficient since it stores N^2*d^2
-            parameters but only needs N*(N-1)*d*(d+1)/4. Also look into new
-            torch parametrization functionality:
-            https://pytorch.org/tutorials/intermediate/parametrizations.html
-        """
+    def weight(self):
+        """Return symmetrized and traceless weight tensor."""
         num_spins, dim = self._weight.size(0), self._weight.size(2)
         weight = self._weight
-        if symmetrize_internal:  # local dofs at every site
+        if self.weight_sym_internal:
             weight = 0.5 * (weight + weight.permute([0, 1, 3, 2]))
-        if symmetrize_sites:  # between sites
+        if self.weight_sym_sites:
             weight = 0.5 * (weight + weight.permute([1, 0, 2, 3]))
         mask = batched_eye(dim ** 2, num_spins,
                            device=weight.device, dtype=weight.dtype)
         mask = rearrange(mask, '(a b) i j -> i j a b', a=dim, b=dim)
-        weight = (1.0 - mask) * weight  # zeros on sites' block-diagonal
+        weight = (1.0 - mask) * weight
         return weight
+
+    def count_params(self):
+        num_spins, dim = self._weight.size(0), self._weight.size(2)
+        site_factor = 0.5*num_spins * \
+            (num_spins-1) if self.weight_sym_sites else num_spins*(num_spins-1)
+        internal_factor = 0.5*dim * \
+            (dim+1) if self.weight_sym_internal else dim**2
+        return site_factor*internal_factor
 
     def _initial_guess(self, x):
         """Return initial guess tensors."""
@@ -119,14 +128,13 @@ class DeepImplicitAttention(_DEQModule):
 
         spin_mean = torch.einsum(
             'i j c d, b j d -> b i c', self.weight(), spin_mean) + x
-
         if self.lin_response:
             spin_mean = spin_mean - self.correction(spin_mean)
 
         return self.pack_state([spin_mean])
 
 
-class ExplicitDeepImplicitAttention(_DEQModule):
+class DEQAdaTAPMeanFieldAttention(_DEQModule):
     """Ising-like vector model with multivariate Gaussian prior over spins.
 
     Generalization of the application of the adaptive TAP mean-field approach
@@ -162,6 +170,10 @@ class ExplicitDeepImplicitAttention(_DEQModule):
             norm of tensor |weight| ~ O(1).
         weight_training (bool):
             Allow coupling weights to be trained. (default: `True`).
+        weight_sym_internal (bool):
+            Symmetrize internal indices of weight tensor. (default: `True`).
+        weight_sym_sites (bool):
+            Symmetrize site indices of weight tensor. (default: `True`).
         lin_response (bool):
             Toggle linear response correction to mean-field (default: `True`).
     """
@@ -172,6 +184,8 @@ class ExplicitDeepImplicitAttention(_DEQModule):
         dim,
         weight_init_std=None,
         weight_training=True,
+        weight_sym_internal=True,
+        weight_sym_sites=True,
         lin_response=True,
     ):
         super().__init__()
@@ -186,11 +200,15 @@ class ExplicitDeepImplicitAttention(_DEQModule):
             ),
             training=weight_training,
         )
+        self.weight_sym_internal = weight_sym_internal
+        self.weight_sym_sites = weight_sym_sites
+
         self.register_buffer(
             'spin_prior_inv_var',
             batched_eye_like(
                 torch.zeros(num_spins, dim, dim))
         )
+
         self.lin_response = lin_response
 
     def _init_weight(self, num_spins, dim, init_std, training):
@@ -202,7 +220,7 @@ class ExplicitDeepImplicitAttention(_DEQModule):
         else:
             self.register_buffer('_weight', weight)
 
-    def weight(self, symmetrize_internal=True, symmetrize_sites=True):
+    def weight(self):
         """
         Return symmetrized and traceless weight tensor.
 
@@ -214,15 +232,23 @@ class ExplicitDeepImplicitAttention(_DEQModule):
         """
         num_spins, dim = self._weight.size(0), self._weight.size(2)
         weight = self._weight
-        if symmetrize_internal:  # local dofs at every site
+        if self.weight_sym_internal:
             weight = 0.5 * (weight + weight.permute([0, 1, 3, 2]))
-        if symmetrize_sites:  # between sites
+        if self.weight_sym_sites:
             weight = 0.5 * (weight + weight.permute([1, 0, 2, 3]))
         mask = batched_eye(dim ** 2, num_spins,
                            device=weight.device, dtype=weight.dtype)
         mask = rearrange(mask, '(a b) i j -> i j a b', a=dim, b=dim)
-        weight = (1.0 - mask) * weight  # zeros on sites' block-diagonal
+        weight = (1.0 - mask) * weight
         return weight
+
+    def count_params(self):
+        num_spins, dim = self._weight.size(0), self._weight.size(2)
+        site_factor = 0.5*num_spins * \
+            (num_spins-1) if self.weight_sym_sites else num_spins*(num_spins-1)
+        internal_factor = 0.5*dim * \
+            (dim+1) if self.weight_sym_internal else dim**2
+        return site_factor*internal_factor
 
     def _initial_guess(self, x):
         """Return initial guess tensors."""
@@ -243,7 +269,7 @@ class ExplicitDeepImplicitAttention(_DEQModule):
         inv_var = self.spin_prior_inv_var - cav_var
         prefactor = torch.solve(batched_eye_like(inv_var), inv_var).solution
         spin_mean = torch.einsum(
-            'n d e, b n d -> b n e', prefactor, (cav_mean + x)
+            'i d e, b i d -> b i e', prefactor, (cav_mean + x)
         )
         spin_var = prefactor
         return spin_mean, spin_var
@@ -275,8 +301,8 @@ class ExplicitDeepImplicitAttention(_DEQModule):
         weight = self.weight()
 
         cav_mean = torch.einsum(
-            'n m d e, b m e -> b n d', weight, spin_mean
-        ) - torch.einsum('b n d e, b n d -> b n e', cav_var, spin_mean)
+            'i j d e, b j e -> b i d', weight, spin_mean
+        ) - torch.einsum('b i d e, b i d -> b i e', cav_var, spin_mean)
 
         spin_mean, spin_var = self._spin_mean_var(x, cav_mean, cav_var[0])
 

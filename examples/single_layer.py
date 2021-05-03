@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from deep_implicit_attention.attention import DeepImplicitAttention
+from deep_implicit_attention.attention import DEQMeanFieldAttention
 from deep_implicit_attention.deq import DEQFixedPoint
 from deep_implicit_attention.solvers import anderson
 
@@ -10,7 +10,7 @@ batch_size, num_spins, dim = 4, 64, 16
 
 # Initialize fixed-point wrapper around model system.
 deq_attn = DEQFixedPoint(
-    DeepImplicitAttention(
+    DEQMeanFieldAttention(
         num_spins=num_spins,
         dim=dim,
         weight_init_std=1.0 / np.sqrt(num_spins * dim**2),

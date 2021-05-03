@@ -5,15 +5,15 @@ import torch
 from torch.autograd import gradcheck
 
 from deep_implicit_attention.attention import (
-    DeepImplicitAttention,
-    ExplicitDeepImplicitAttention,
+    DEQMeanFieldAttention,
+    DEQAdaTAPMeanFieldAttention,
 )
 from deep_implicit_attention.deq import DEQFixedPoint
 from deep_implicit_attention.solvers import anderson
 
 
 class TestGradients(unittest.TestCase):
-    def test_explicit_deep_implicit_attention(self):
+    def test_adatap_mean_field_attention(self):
         """Run a small network with double precision."""
 
         num_spins, dim = 11, 3
@@ -21,7 +21,7 @@ class TestGradients(unittest.TestCase):
         for lin_response in [False, True]:
             with self.subTest():
                 deq_attn = DEQFixedPoint(
-                    ExplicitDeepImplicitAttention(
+                    DEQAdaTAPMeanFieldAttention(
                         num_spins=num_spins,
                         dim=dim,
                         lin_response=lin_response,
@@ -41,7 +41,7 @@ class TestGradients(unittest.TestCase):
                     )
                 )
 
-    def test_deep_implicit_attention(self):
+    def test_mean_field_attention(self):
         """Run a small network with double precision."""
 
         num_spins, dim = 11, 3
@@ -49,7 +49,7 @@ class TestGradients(unittest.TestCase):
         for lin_response in [False, True]:
             with self.subTest():
                 deq_attn = DEQFixedPoint(
-                    DeepImplicitAttention(
+                    DEQMeanFieldAttention(
                         num_spins=num_spins,
                         dim=dim,
                         lin_response=lin_response,
