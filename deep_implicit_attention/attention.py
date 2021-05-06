@@ -15,7 +15,7 @@ class DEQMeanFieldAttention(_DEQModule):
     model. Schematically, the fixed-point mean-field equations including
     the Onsager self-correction term look like:
 
-        S_i ~ sum_ij J_ij S_j - f(S_i) + x_i
+        S_i ~ sum_j J_ij S_j - f(S_i) + x_i
 
     where `f` is a neural network parametrizing the self-correction term for
     every site and `x_i` denote the input injection or magnetic fields applied
@@ -141,7 +141,7 @@ class DEQAdaTAPMeanFieldAttention(_DEQModule):
     from a system of binary/scalar spins to vector spins. Schematically, the
     fixed-point mean-field equations including the Onsager term look like:
 
-        S_i ~ sum_ij J_ij S_j - V_i S_i + x_i
+        S_i ~ sum_j J_ij S_j - V_i S_i + x_i
 
     where the V_i are self-corrections obtained self-consistently and `x_i`
     denote the input injection or magnetic fields applied at site `i`. The
