@@ -1,3 +1,5 @@
+"""See https://github.com/lucidrains?tab=repositories for elegant attention."""
+
 import torch.nn as nn
 
 

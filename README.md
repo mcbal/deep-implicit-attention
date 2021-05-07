@@ -14,7 +14,7 @@ Transformer architectures can be understood as particular approximations/paramet
 ```
 z_i = sum_j J_ij z_j + f(z_i) + x_i
 ```
-where `f` is a neural network acting on every vector `z_i` and the `z_i` are solved for iteratively. Explicit transformers take the couplings `J_ij` to depend on `x_i` parametrically and consider the fixed-point equation above as a single-step update equation.
+where `f` is a neural network acting on every vector `z_i` and the `z_i` are solved for iteratively.
 
 ### `DEQMLPMixerAttention`
 
@@ -41,9 +41,7 @@ where
 ```
 J_ij = [softmax(X W_Q W_K^T X^T / sqrt(dim))]_ij
 ```
-Compared to the explicit vanilla softmax attention transformer module,
-there's no values and the fixed-point variables `z_i`'s are fed straight
-into the feed-forward self-correction term.
+Transformer attention takes the couplings `J_ij` to depend on `x_i` parametrically and considers the fixed-point equation above as a single-step update equation. Compared to the explicit vanilla softmax attention transformer module, there's no values and the fixed-point variables `z_i`'s are fed straight into the feed-forward self-correction term.
 
 ### `DEQMeanFieldAttention`
 Fast and neural deep implicit attention as introduced in https://mcbal.github.io/post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/.
@@ -55,11 +53,11 @@ z_i = sum_j J_ij z_j - f(z_i) + x_i
 where `f` is a neural network parametrizing the self-correction term for
 every site and `x_i` denote the input injection or magnetic fields applied
 at site `i`. Mean-field results are obtained by dropping the self-
-correction term. This model generalizes the current generation of transformers in that its couplings are free parameters independent of the incoming data `x_i`.
+correction term. This model generalizes the current generation of transformers in the sense that its couplings are free parameters independent of the incoming data `x_i`.
 
 ### `DEQAdaTAPMeanFieldAttention`
 
-Slow and explicit deep implicit attention as introduced in https://mcbal.github.io/post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/.
+Slow and explicit deep implicit attention as introduced in https://mcbal.github.io/post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/ (served as grounding and inspiration for fast and neural one above)
 
 Ising-like vector model with multivariate Gaussian prior over spins. Generalization of the application of the adaptive TAP mean-field approach
 from a system of binary/scalar spins to vector spins. Schematically, the
