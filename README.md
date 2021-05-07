@@ -29,9 +29,7 @@ across the feature dimension (so individually on every sequence).
 Compared to a vanilla softmax attention transformer module, the
 sum over couplings has been "amortized" and parametrized by an MLP.
 The fixed-point variables z_i's are also fed straight into the
-feed-forward self-correction term. One could feed `spin_mean_mf`
-instead to fully mimic the residual connection in the explicit
-MLP-Mixer architecture.
+feed-forward self-correction term. One could feed the naive mean-field update `g({z_j}) + x_i` instead to fully mimic the residual connection in the explicit MLP-Mixer architecture.
 
 ### `DEQVanillaSoftmaxAttention`
 
@@ -55,7 +53,7 @@ Schematically, the fixed-point mean-field equations including the Onsager self-c
 z_i = sum_j J_ij z_j - f(z_i) + x_i
 ```
 where `f` is a neural network parametrizing the self-correction term for
-every site and `X_i` denote the input injection or magnetic fields applied
+every site and `x_i` denote the input injection or magnetic fields applied
 at site `i`. Mean-field results are obtained by dropping the self-
 correction term. This model generalizes the current generation of transformers in that its couplings are free parameters independent of the incoming data `x_i`.
 

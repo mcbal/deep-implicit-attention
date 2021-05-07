@@ -22,9 +22,9 @@ class DEQMLPMixerAttention(_DEQModule):
     Compared to a vanilla softmax attention transformer module, the
     sum over couplings has been "amortized" and parametrized by an MLP.
     The fixed-point variables S_i's are also fed straight into the
-    feed-forward self-correction term. One could feed `spin_mean_mf`
-    instead to fully mimic the residual connection in the explicit
-    MLP-Mixer architecture.
+    feed-forward self-correction term. One could feed the naive
+    mean-field update `g({z_j}) + x_i` instead to fully mimic the
+    residual connection in the explicit MLP-Mixer architecture.
 
     Note:
         To use this module, wrap it in `modules.DEQFixedPoint`.
