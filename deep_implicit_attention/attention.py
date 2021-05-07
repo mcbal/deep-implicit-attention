@@ -1,11 +1,102 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from einops import rearrange
+from einops import rearrange, repeat
 
 from .deq import _DEQModule
 from .modules import FeedForward
 from .utils import batched_eye, batched_eye_like
+
+
+class DEQVanillaSoftmaxAttention(_DEQModule):
+    """A deep equilibrium version of vanilla softmax transformer attention.
+
+        S_i ~ sum_j J_ij S_j - f(S_i) + X_i
+
+    where
+
+        J_ij = [softmax(X W_Q W_K^T X^T / sqrt(dim))]_ij
+
+    Compared to the explicit vanilla softmax attention transformer module,
+    there's no values and the fixed-point variables S_i's are fed straight
+    into the feed-forward self-correction term.
+
+    Note:
+        To use this module, wrap it in `modules.DEQFixedPoint`.
+    """
+
+    def __init__(
+        self,
+        num_spins,
+        dim,
+        heads=1,
+        dim_head=None,
+        scale=None,
+        lin_response=True,
+    ):
+        super().__init__()
+
+        dim_head = dim_head if dim_head is not None else (dim // heads)
+        inner_dim = dim_head * heads
+
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(dim, inner_dim, bias=False)
+        self.to_out = nn.Linear(inner_dim, dim)
+
+        self.heads = heads
+        self.scale = scale if scale is not None else dim_head ** -0.5
+
+        if lin_response:
+            self.correction = FeedForward(dim)  # no dropout
+        self.lin_response = lin_response
+
+    def _initial_guess(self, x):
+        """Return initial guess tensors."""
+        bsz, N, d = x.shape
+        return [torch.zeros((bsz, N, d), device=x.device, dtype=x.dtype)]
+
+    def forward(self, z, x, *args):
+        spin_mean, = self.unpack_state(z)
+        mask = args[0] if len(args) > 0 else None
+
+        # Get queries, keys, and number of heads.
+        q, k, h = self.to_q(x), self.to_k(x), self.heads
+
+        # Reshape head dimension into batch for queries, keys, and spin_means.
+        q, k, spin_mean_heads = map(
+            lambda t: rearrange(
+                t, 'b n (h d) -> (b h) n d', h=h), (q, k, spin_mean)
+        )
+
+        # Compute scaled queries/keys overlap.
+        scaled_overlap = torch.einsum(
+            'b i d, b j d -> b i j', q, k) * self.scale
+
+        # Optional masking.
+        if mask is not None:
+            max_neg_value = -torch.finfo(scaled_overlap.dtype).max
+            mask = repeat(mask, 'b j -> (b h) () j', h=h)
+            scaled_overlap.masked_fill_(~mask, max_neg_value)
+
+        # Sum over softmax of scaled overlap, for all heads.
+        sum_over_couplings_heads = torch.einsum(
+            'b i j, b j d -> b i d',
+            scaled_overlap.softmax(dim=-1),
+            spin_mean_heads
+        )
+
+        # Merge heads again and add source term (~ residual connection).
+        spin_mean_mf = self.to_out(
+            rearrange(
+                sum_over_couplings_heads,
+                '(b h) n d -> b n (h d)', h=h
+            )) + x
+
+        # Add parametrized self-correction term.
+        if self.lin_response:
+            spin_mean = spin_mean_mf - self.correction(spin_mean)
+
+        return self.pack_state([spin_mean])
 
 
 class DEQMeanFieldAttention(_DEQModule):
@@ -15,10 +106,10 @@ class DEQMeanFieldAttention(_DEQModule):
     model. Schematically, the fixed-point mean-field equations including
     the Onsager self-correction term look like:
 
-        S_i ~ sum_j J_ij S_j - f(S_i) + x_i
+        S_i ~ sum_j J_ij S_j - f(S_i) + X_i
 
     where `f` is a neural network parametrizing the self-correction term for
-    every site and `x_i` denote the input injection or magnetic fields applied
+    every site and `X_i` denote the input injection or magnetic fields applied
     at site `i`. Mean-field results are obtained by dropping the self-
     correction term. This all looks a lot like a transformer.
 
@@ -126,10 +217,11 @@ class DEQMeanFieldAttention(_DEQModule):
         """
         spin_mean, = self.unpack_state(z)
 
-        spin_mean = torch.einsum(
+        spin_mean_mf = torch.einsum(
             'i j c d, b j d -> b i c', self.weight(), spin_mean) + x
+
         if self.lin_response:
-            spin_mean = spin_mean - self.correction(spin_mean)
+            spin_mean = spin_mean_mf - self.correction(spin_mean)
 
         return self.pack_state([spin_mean])
 
@@ -141,9 +233,9 @@ class DEQAdaTAPMeanFieldAttention(_DEQModule):
     from a system of binary/scalar spins to vector spins. Schematically, the
     fixed-point mean-field equations including the Onsager term look like:
 
-        S_i ~ sum_j J_ij S_j - V_i S_i + x_i
+        S_i ~ sum_j J_ij S_j - V_i S_i + X_i
 
-    where the V_i are self-corrections obtained self-consistently and `x_i`
+    where the V_i are self-corrections obtained self-consistently and `X_i`
     denote the input injection or magnetic fields applied at site `i`. The
     linear response correction step involves solving a system of equations,
     leading to a complexity ~ O(N^3*d^3). Mean-field results are obtained
