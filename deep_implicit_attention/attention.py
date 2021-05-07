@@ -1,3 +1,5 @@
+from functools import partial
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -8,8 +10,63 @@ from .modules import FeedForward
 from .utils import batched_eye, batched_eye_like
 
 
+class DEQMLPMixerAttention(_DEQModule):
+    """A deep equilibrium version of MLP-Mixer transformer attention:
+
+        S_i ~ g({S_j}) - f(S_i) + X_i
+
+    where `g` is an MLP acting across the sequence dimension instead of
+    the feature dimension (so across patches). The network `f` acts
+    across the feature dimension (so individually on every sequence).
+
+    Compared to a vanilla softmax attention transformer module, the
+    sum over couplings has been "amortized" and parametrized by an MLP.
+    The fixed-point variables S_i's are also fed straight into the
+    feed-forward self-correction term. One could feed `spin_mean_mf`
+    instead to fully mimic the residual connection in the explicit
+    MLP-Mixer architecture.
+
+    Note:
+        To use this module, wrap it in `modules.DEQFixedPoint`.
+    """
+
+    def __init__(
+        self,
+        num_spins,
+        dim,
+        lin_response=True,
+    ):
+        super().__init__()
+
+        self.sum_over_couplings = FeedForward(
+            num_spins, dense=partial(nn.Conv1d, kernel_size=1)
+        )  # no dropout
+
+        if lin_response:
+            self.correction = FeedForward(dim, dense=nn.Linear)  # no dropout
+        self.lin_response = lin_response
+
+    def _initial_guess(self, x):
+        """Return initial guess tensors."""
+        bsz, N, d = x.shape
+        return [torch.zeros((bsz, N, d), device=x.device, dtype=x.dtype)]
+
+    def forward(self, z, x, *args):
+        spin_mean, = self.unpack_state(z)
+
+        # Apply sum-over-couplings amortization MLP and add source term.
+        spin_mean_mf = self.sum_over_couplings(spin_mean) + x
+
+        # Add parametrized self-correction term. Change `spin_mean`
+        # to `spin_mean_mf` below to mimic explicit architecture.
+        if self.lin_response:
+            spin_mean = spin_mean_mf - self.correction(spin_mean)
+
+        return self.pack_state([spin_mean])
+
+
 class DEQVanillaSoftmaxAttention(_DEQModule):
-    """A deep equilibrium version of vanilla softmax transformer attention.
+    """A deep equilibrium version of vanilla softmax transformer attention:
 
         S_i ~ sum_j J_ij S_j - f(S_i) + X_i
 
@@ -92,7 +149,8 @@ class DEQVanillaSoftmaxAttention(_DEQModule):
                 '(b h) n d -> b n (h d)', h=h
             )) + x
 
-        # Add parametrized self-correction term.
+        # Add parametrized self-correction term. Change `spin_mean`
+        # to `spin_mean_mf` below to mimic explicit architecture.
         if self.lin_response:
             spin_mean = spin_mean_mf - self.correction(spin_mean)
 
