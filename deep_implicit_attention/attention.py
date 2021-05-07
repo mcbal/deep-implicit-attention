@@ -28,6 +28,10 @@ class DEQMLPMixerAttention(_DEQModule):
 
     Note:
         To use this module, wrap it in `modules.DEQFixedPoint`.
+
+    Paper:
+        https://arxiv.org/abs/2105.02723
+        https://arxiv.org/abs/2105.01601
     """
 
     def __init__(
@@ -80,6 +84,9 @@ class DEQVanillaSoftmaxAttention(_DEQModule):
 
     Note:
         To use this module, wrap it in `modules.DEQFixedPoint`.
+
+    Paper:
+        https://arxiv.org/abs/1706.03762
     """
 
     def __init__(
@@ -191,6 +198,9 @@ class DEQMeanFieldAttention(_DEQModule):
             Symmetrize site indices of weight tensor. (default: `False`).
         lin_response (bool):
             Toggle linear response correction to mean-field (default: `True`).
+
+    Blog:
+        https://mcbal.github.io/post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/
     """
 
     def __init__(
@@ -326,6 +336,9 @@ class DEQAdaTAPMeanFieldAttention(_DEQModule):
             Symmetrize site indices of weight tensor. (default: `True`).
         lin_response (bool):
             Toggle linear response correction to mean-field (default: `True`).
+
+    Blog:
+        https://mcbal.github.io/post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/
     """
 
     def __init__(
