@@ -13,7 +13,7 @@ from .utils import batched_eye, batched_eye_like
 class DEQMLPMixerAttention(_DEQModule):
     """A deep equilibrium version of MLP-Mixer transformer attention:
 
-        S_i ~ g({S_j}) - f(S_i) + X_i
+        S_i = g({S_j}) - f(S_i) + X_i
 
     where `g` is an MLP acting across the sequence dimension instead of
     the feature dimension (so across patches). The network `f` acts
@@ -72,7 +72,7 @@ class DEQMLPMixerAttention(_DEQModule):
 class DEQVanillaSoftmaxAttention(_DEQModule):
     """A deep equilibrium version of vanilla softmax transformer attention:
 
-        S_i ~ sum_j J_ij S_j - f(S_i) + X_i
+        S_i = sum_j J_ij S_j - f(S_i) + X_i
 
     where
 
@@ -171,7 +171,7 @@ class DEQMeanFieldAttention(_DEQModule):
     model. Schematically, the fixed-point mean-field equations including
     the Onsager self-correction term look like:
 
-        S_i ~ sum_j J_ij S_j - f(S_i) + X_i
+        S_i = sum_j J_ij S_j - f(S_i) + X_i
 
     where `f` is a neural network parametrizing the self-correction term for
     every site and `X_i` denote the input injection or magnetic fields applied
