@@ -10,9 +10,9 @@ Experimental implementation of deep implicit attention in PyTorch.
 
 ## Mean-field theory framework for transformer architectures
 
-Transformer architectures can be understood as particular approximations/parametrizations of the blueprint mean-field description of a vector Ising model being probed by incoming data `x_i`:
+Transformer architectures can be understood as particular approximations of a parametrized mean-field description of a vector Ising model being probed by incoming data `x_i`:
 ```
-z_i = sum_j J_ij z_j + f(z_i) + x_i
+z_i = sum_j J_ij z_j - f(z_i) + x_i
 ```
 where `f` is a neural network acting on every vector `z_i` and the `z_i` are solved for iteratively.
 
@@ -23,12 +23,11 @@ A deep equilibrium version of MLP-Mixer transformer attention (https://arxiv.org
 z_i = g({z_j}) - f(z_i) + x_i
 ```
 where `g` is an MLP acting across the sequence dimension instead of
-the feature dimension (so across patches). The network `f` acts
-across the feature dimension (so individually on every sequence).
+the feature dimension (so across patches). The network `f` parametrizes the self-correction term and acts across the feature dimension (so individually on every sequence).
 
-Compared to a vanilla softmax attention transformer module, the
+Compared to a vanilla softmax attention transformer module (see below), the
 sum over couplings has been "amortized" and parametrized by an MLP.
-The fixed-point variables z_i's are also fed straight into the
+The fixed-point variables `z_i` are also fed straight into the
 feed-forward self-correction term. One could feed the naive mean-field update `g({z_j}) + x_i` instead to fully mimic the residual connection in the explicit MLP-Mixer architecture.
 
 ### `DEQVanillaSoftmaxAttention`
@@ -41,7 +40,7 @@ where
 ```
 J_ij = [softmax(X W_Q W_K^T X^T / sqrt(dim))]_ij
 ```
-Transformer attention takes the couplings `J_ij` to depend on `x_i` parametrically and considers the fixed-point equation above as a single-step update equation. Compared to the explicit vanilla softmax attention transformer module, there's no values and the fixed-point variables `z_i`'s are fed straight into the feed-forward self-correction term.
+Transformer attention takes the couplings `J_ij` to depend on `x_i` parametrically and considers the fixed-point equation above as a single-step update equation. Compared to the explicit vanilla softmax attention transformer module, there's no values and the fixed-point variables `z_i` are fed straight into the feed-forward self-correction term.
 
 ### `DEQMeanFieldAttention`
 Fast and neural deep implicit attention as introduced in https://mcbal.github.io/post/deep-implicit-attention-a-mean-field-theory-perspective-on-attention-mechanisms/.
