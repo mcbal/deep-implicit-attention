@@ -100,7 +100,6 @@ On variational inference, iterative approximation algorithms, expectation propag
 On the adaptive Thouless-Anderson-Palmer (TAP) mean-field approach in disorder physics:
 - [Adaptive and self-averaging Thouless-Anderson-Palmer mean-field theory for probabilistic modeling](https://link.aps.org/doi/10.1103/PhysRevE.64.056131) (2001) by Manfred Opper and Ole Winther
 
-
 On Boltzmann machines and mean-field theory:
 - [Efficient Learning in Boltzmann Machines Using Linear Response Theory](https://doi.org/10.1162/089976698300017386) (1998) by H. J. Kappen and
 F. B. Rodríguez
@@ -109,6 +108,9 @@ F. B. Rodríguez
 On deep equilibrium models:
 - [Deep Equilibrium Models](https://arxiv.org/abs/1909.01377) (2019) by Shaojie Bai, Zico Kolter, Vladlen Koltun
 - [Chapter 4: Deep Equilibrium Models](https://implicit-layers-tutorial.org/deep_equilibrium_models/) of the [Deep Implicit Layers - Neural ODEs, Deep Equilibrium Models, and Beyond](http://implicit-layers-tutorial.org/), created by Zico Kolter, David Duvenaud, and Matt Johnson
+
+On approximate message passing (AMP) methods in statistics: 
+- [A unifying tutorial on Approximate Message Passing](https://arxiv.org/abs/2105.02180) by Oliver Y. Feng, Ramji Venkataramanan, Cynthia Rush, Richard J. Samworth: the example on page 2 basically describes how transformers implement approximate message passing: an iterative algorithm with a "denoising" step (attention) followed by a "memory term" or Onsager correction term (feed-forward layer)
 
 
 ### Code inspiration
