@@ -63,10 +63,10 @@ class DEQMLPMixerAttention(_DEQModule):
 
         # Add parametrized self-correction term. Change `spin_mean`
         # to `spin_mean_mf` below to mimic explicit architecture.
-        if self.lin_response:
-            spin_mean = spin_mean_mf - self.correction(spin_mean)
+        new_spin_mean = spin_mean_mf - \
+            self.correction(spin_mean) if self.lin_response else spin_mean_mf
 
-        return self.pack_state([spin_mean])
+        return self.pack_state([new_spin_mean])
 
 
 class DEQVanillaSoftmaxAttention(_DEQModule):
@@ -158,10 +158,10 @@ class DEQVanillaSoftmaxAttention(_DEQModule):
 
         # Add parametrized self-correction term. Change `spin_mean`
         # to `spin_mean_mf` below to mimic explicit architecture.
-        if self.lin_response:
-            spin_mean = spin_mean_mf - self.correction(spin_mean)
+        new_spin_mean = spin_mean_mf - \
+            self.correction(spin_mean) if self.lin_response else spin_mean_mf
 
-        return self.pack_state([spin_mean])
+        return self.pack_state([new_spin_mean])
 
 
 class DEQMeanFieldAttention(_DEQModule):
@@ -288,10 +288,10 @@ class DEQMeanFieldAttention(_DEQModule):
         spin_mean_mf = torch.einsum(
             'i j c d, b j d -> b i c', self.weight(), spin_mean) + x
 
-        if self.lin_response:
-            spin_mean = spin_mean_mf - self.correction(spin_mean)
+        new_spin_mean = spin_mean_mf - \
+            self.correction(spin_mean) if self.lin_response else spin_mean_mf
 
-        return self.pack_state([spin_mean])
+        return self.pack_state([new_spin_mean])
 
 
 class DEQAdaTAPMeanFieldAttention(_DEQModule):
