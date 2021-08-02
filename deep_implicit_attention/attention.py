@@ -27,7 +27,7 @@ class DEQMLPMixerAttention(_DEQModule):
     residual connection in the explicit MLP-Mixer architecture.
 
     Note:
-        To use this module, wrap it in `modules.DEQFixedPoint`.
+        To use this module, wrap it in `deq.DEQFixedPoint`.
 
     Paper:
         https://arxiv.org/abs/2105.02723
@@ -83,7 +83,7 @@ class DEQVanillaSoftmaxAttention(_DEQModule):
     into the feed-forward self-correction term.
 
     Note:
-        To use this module, wrap it in `modules.DEQFixedPoint`.
+        To use this module, wrap it in `deq.DEQFixedPoint`.
 
     Paper:
         https://arxiv.org/abs/1706.03762
@@ -179,7 +179,7 @@ class DEQMeanFieldAttention(_DEQModule):
     correction term. This all looks a lot like a transformer.
 
     Note:
-        To use this module, wrap it in `modules.DEQFixedPoint`.
+        To use this module, wrap it in `deq.DEQFixedPoint`.
 
     Args:
         num_spins (int):
@@ -317,7 +317,7 @@ class DEQAdaTAPMeanFieldAttention(_DEQModule):
     first and second moments assuming a Gaussian cavity distribution.
 
     Note:
-        To use this module, wrap it in `modules.DEQFixedPoint`.
+        To use this module, wrap it in `deq.DEQFixedPoint`.
 
     Args:
         num_spins (int):
